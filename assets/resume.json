@@ -1,0 +1,30 @@
+{
+  "basics": {
+    "name": "Ada Lovelace",
+    "label": "Computing pioneer",
+    "summary": "A sample JSON Resume used by the Rustume visualizer."
+  },
+  "work": [
+    {
+      "name": "Analytical Engines",
+      "position": "Computing researcher",
+      "startDate": "1842-01",
+      "endDate": "1843-12",
+      "location": "London, United Kingdom"
+    },
+    {
+      "name": "Difference Works",
+      "position": "Technical author",
+      "startDate": "1840-01",
+      "endDate": "1841-06",
+      "location": {"countryCode": "GB"}
+    }
+  ],
+  "skills": [
+    {"name": "Mathematics", "keywords": ["analysis", "systems"]},
+    {"name": "Systems thinking", "keywords": ["systems"]},
+    {"name": "Technical writing", "keywords": []}
+  ],
+  "projects": [],
+  "education": []
+}

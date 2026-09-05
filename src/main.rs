@@ -1,18 +1,9 @@
-mod app;
+use gpui_kit::WindowOptions;
 
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::wasm_bindgen;
-
-#[cfg(target_arch = "wasm32")]
-use leptos::mount_to_body;
-
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen(start)]
-pub fn main() {
-    mount_to_body(app::App);
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn main() {
-    println!("rustume is a client-side Leptos app. Build the wasm target to run it in the browser.");
+fn main() {
+    gpui_kit::application().run(|cx| {
+        gpui_kit::init(cx);
+        cx.open_window(WindowOptions::default(), |window, cx| rustume::app::root_view(window, cx))
+            .expect("failed to open rustume window");
+    });
 }
