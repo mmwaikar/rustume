@@ -13,9 +13,15 @@ pub struct Resume {
     #[serde(default)]
     pub skills: Vec<Skill>,
     #[serde(default)]
-    pub projects: Vec<serde_json::Value>,
+    pub projects: Vec<Project>,
     #[serde(default)]
-    pub education: Vec<serde_json::Value>,
+    pub education: Vec<Education>,
+    #[serde(default)]
+    pub publications: Vec<Publication>,
+    #[serde(default)]
+    pub languages: Vec<Language>,
+    #[serde(default)]
+    pub interests: Vec<Interest>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
@@ -26,6 +32,98 @@ pub struct Basics {
     pub label: String,
     #[serde(default)]
     pub summary: String,
+    #[serde(default)]
+    pub email: String,
+    #[serde(default)]
+    pub phone: String,
+    #[serde(default)]
+    pub website: String,
+    #[serde(default)]
+    pub location: Option<BasicsLocation>,
+    #[serde(default)]
+    pub profiles: Vec<Profile>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
+pub struct BasicsLocation {
+    #[serde(default)]
+    pub address: String,
+    #[serde(default)]
+    pub postal_code: String,
+    #[serde(default)]
+    pub city: String,
+    #[serde(default)]
+    pub country_code: String,
+    #[serde(default)]
+    pub region: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
+pub struct Profile {
+    #[serde(default)]
+    pub network: String,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
+pub struct Education {
+    #[serde(default)]
+    pub institution: String,
+    #[serde(default)]
+    pub area: String,
+    #[serde(rename = "studyType", default)]
+    pub study_type: String,
+    #[serde(rename = "startDate", default)]
+    pub start_date: Option<String>,
+    #[serde(rename = "endDate", default)]
+    pub end_date: Option<String>,
+    #[serde(default)]
+    pub courses: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
+pub struct Publication {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub publisher: String,
+    #[serde(rename = "releaseDate", default)]
+    pub release_date: Option<String>,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
+pub struct Language {
+    #[serde(default)]
+    pub language: String,
+    #[serde(default)]
+    pub fluency: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
+pub struct Interest {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub keywords: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
+pub struct Project {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub highlights: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
@@ -60,6 +158,8 @@ pub enum Location {
 pub struct Skill {
     #[serde(default)]
     pub name: String,
+    #[serde(default)]
+    pub level: String,
     #[serde(default)]
     pub keywords: Vec<String>,
 }
@@ -116,16 +216,19 @@ impl fmt::Display for ResumeError {
 impl std::error::Error for ResumeError {}
 
 pub fn parse_resume(input: &str) -> Result<Resume, ResumeError> {
-    let value: serde_json::Value = serde_json::from_str(input)
-        .map_err(|error| ResumeError::Json(error.to_string()))?;
+    let value: serde_json::Value =
+        serde_json::from_str(input).map_err(|error| ResumeError::Json(error.to_string()))?;
     if !value.is_object() {
-        return Err(ResumeError::Json("resume document must be a JSON object".to_owned()));
+        return Err(ResumeError::Json(
+            "resume document must be a JSON object".to_owned(),
+        ));
     }
     serde_json::from_value(value).map_err(|error| ResumeError::Json(error.to_string()))
 }
 
 pub fn load_resume(path: impl AsRef<Path>) -> Result<Resume, ResumeError> {
-    let input = std::fs::read_to_string(path).map_err(|error| ResumeError::Io(error.to_string()))?;
+    let input =
+        std::fs::read_to_string(path).map_err(|error| ResumeError::Io(error.to_string()))?;
     parse_resume(&input)
 }
 
@@ -166,7 +269,11 @@ pub fn country_for_location(location: Option<&Location>) -> String {
             country_code,
             country,
             ..
-        }) => country_code.as_deref().or(country.as_deref()).unwrap_or("").trim(),
+        }) => country_code
+            .as_deref()
+            .or(country.as_deref())
+            .unwrap_or("")
+            .trim(),
         None => "",
     };
     if candidate.is_empty() {
@@ -205,7 +312,11 @@ pub fn geography_graph(resume: &Resume) -> GraphPayload {
     let mut nodes = BTreeMap::new();
     let mut edges = Vec::new();
     for work in &resume.work {
-        let company = if work.name.is_empty() { "Unknown company" } else { &work.name };
+        let company = if work.name.is_empty() {
+            "Unknown company"
+        } else {
+            &work.name
+        };
         let country = country_for_location(work.location.as_ref());
         let company_id = graph_id("company", company);
         let country_id = graph_id("country", &country);
@@ -242,7 +353,14 @@ pub fn skills_graph(resume: &Resume) -> GraphPayload {
             label: skill.name.clone(),
             group: "skill".to_owned(),
         });
-        keywords.push((skill.name.clone(), skill.keywords.iter().map(|value| value.to_lowercase()).collect::<BTreeSet<_>>()));
+        keywords.push((
+            skill.name.clone(),
+            skill
+                .keywords
+                .iter()
+                .map(|value| value.to_lowercase())
+                .collect::<BTreeSet<_>>(),
+        ));
     }
     let mut edges = Vec::new();
     for (index, (left, left_keywords)) in keywords.iter().enumerate() {
@@ -290,8 +408,23 @@ mod tests {
 
     #[test]
     fn computes_inclusive_and_equal_months() {
-        let current = YearMonth { year: 2022, month: 1 };
-        assert_eq!(inclusive_months(YearMonth { year: 2020, month: 1 }, YearMonth { year: 2020, month: 3 }), 3);
+        let current = YearMonth {
+            year: 2022,
+            month: 1,
+        };
+        assert_eq!(
+            inclusive_months(
+                YearMonth {
+                    year: 2020,
+                    month: 1
+                },
+                YearMonth {
+                    year: 2020,
+                    month: 3
+                }
+            ),
+            3
+        );
         let resume = sample();
         let totals = company_months(&resume, current).unwrap();
         assert_eq!(totals["Analytical Engines"], 4);
@@ -306,7 +439,25 @@ mod tests {
         let skills = skills_graph(&resume);
         assert!(skills.nodes.iter().any(|node| node.label == "Writing"));
         assert_eq!(skills.edges.len(), 1);
-        assert!(skills.edges.iter().all(|edge| skills.nodes.iter().any(|node| node.id == edge.source) && skills.nodes.iter().any(|node| node.id == edge.target)));
+        assert!(skills.edges.iter().all(|edge| skills
+            .nodes
+            .iter()
+            .any(|node| node.id == edge.source)
+            && skills.nodes.iter().any(|node| node.id == edge.target)));
+    }
+
+    #[test]
+    fn parses_actual_resume_content_sections() {
+        let resume = parse_resume(include_str!("../assets/resume.json")).unwrap();
+        assert_eq!(resume.basics.name, "Manoj Waikar");
+        assert!(!resume.basics.profiles.is_empty());
+        assert!(!resume.education.is_empty());
+        assert!(!resume.publications.is_empty());
+        assert!(!resume.languages.is_empty());
+        assert!(!resume.interests.is_empty());
+        assert!(!resume.projects.is_empty());
+        assert_eq!(wordpress_publications(&resume).len(), 4);
+        assert!(has_network_profile(&resume));
     }
 }
 
@@ -315,4 +466,20 @@ fn normalize_date(value: &str) -> String {
         4 => format!("{value}-01"),
         _ => value[..7.min(value.len())].to_owned(),
     }
+}
+
+pub fn wordpress_publications(resume: &Resume) -> Vec<&Publication> {
+    resume
+        .publications
+        .iter()
+        .filter(|publication| publication.publisher.eq_ignore_ascii_case("wordpress"))
+        .collect()
+}
+
+pub fn has_network_profile(resume: &Resume) -> bool {
+    resume
+        .basics
+        .profiles
+        .iter()
+        .any(|profile| !profile.url.is_empty())
 }
