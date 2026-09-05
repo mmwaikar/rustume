@@ -17,9 +17,13 @@ I want to build a resume visualizer in Rust. The app will be a client side app a
 
 ## Changes
 
+### 5-Sep-2026 compendium-section-visual-refresh
+
 Can you change the following sections:
 
 1. profile section should look like ![profile](screenshots/profile.png)
 2. skills section should look like ![skills](screenshots/skills.png)
 3. projects section should look like ![projects](screenshots/projects.png)
 4. blog posts section should look like ![blog-posts](screenshots/blog-posts.png)
+
+I like the current colors so don't use the blue visual language but keep the current colors.
