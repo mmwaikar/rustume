@@ -1,6 +1,6 @@
 # Implementation Plan
 
-1. Scaffold the Rust repo and Leptos app.
+1. Scaffold the Rust repo and gpui app.
 2. Port the resume schema and analytics from the Blazor app.
 3. Rebuild the navigation shell and page layout.
 4. Wire Cytoscape with Rust-built graph payloads.
