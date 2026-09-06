@@ -430,15 +430,6 @@ impl App {
             for highlight in &item.highlights {
                 highlights = highlights.child(badge(highlight.clone()));
             }
-            let source = if item.url.is_empty() {
-                div().into_any_element()
-            } else {
-                Self::link(
-                    "project-source",
-                    "Open project".to_owned(),
-                    item.url.clone(),
-                )
-            };
             grid = grid.child(card(
                 div()
                     .child(Self::link(
@@ -448,7 +439,6 @@ impl App {
                     ))
                     .child(highlights)
                     .child(div().mt_4().child(item.description.clone()))
-                    .child(div().mt_4().child(source)),
             ));
         }
         view.child(grid).into_any_element()

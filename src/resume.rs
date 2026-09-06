@@ -383,6 +383,29 @@ pub fn skills_graph(resume: &Resume) -> GraphPayload {
     }
 }
 
+fn normalize_date(value: &str) -> String {
+    match value.len() {
+        4 => format!("{value}-01"),
+        _ => value[..7.min(value.len())].to_owned(),
+    }
+}
+
+pub fn wordpress_publications(resume: &Resume) -> Vec<&Publication> {
+    resume
+        .publications
+        .iter()
+        .filter(|publication| publication.publisher.eq_ignore_ascii_case("wordpress"))
+        .collect()
+}
+
+pub fn has_network_profile(resume: &Resume) -> bool {
+    resume
+        .basics
+        .profiles
+        .iter()
+        .any(|profile| !profile.url.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -459,27 +482,4 @@ mod tests {
         assert_eq!(wordpress_publications(&resume).len(), 4);
         assert!(has_network_profile(&resume));
     }
-}
-
-fn normalize_date(value: &str) -> String {
-    match value.len() {
-        4 => format!("{value}-01"),
-        _ => value[..7.min(value.len())].to_owned(),
-    }
-}
-
-pub fn wordpress_publications(resume: &Resume) -> Vec<&Publication> {
-    resume
-        .publications
-        .iter()
-        .filter(|publication| publication.publisher.eq_ignore_ascii_case("wordpress"))
-        .collect()
-}
-
-pub fn has_network_profile(resume: &Resume) -> bool {
-    resume
-        .basics
-        .profiles
-        .iter()
-        .any(|profile| !profile.url.is_empty())
 }
