@@ -2,13 +2,18 @@ use crate::resume::{
     company_months, geography_graph, skills_graph, wordpress_publications, Resume, YearMonth,
 };
 use gpui_kit::component::{
-    dock::{DockArea, DockSkin},
+    bubble::{Bubble, BubbleVariant},
+    dock::{
+        BasePanel, DockArea, DockLayout, DockPlacement, DockSkin, Panel as DockPanel, PanelEvent,
+    },
+    group_box::{GroupBox, GroupBoxVariants},
     link::Link,
     Root,
 };
 use gpui_kit::{
-    div, AnyElement, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement,
-    Render, StatefulInteractiveElement, Styled, Window,
+    div, AnyElement, App as GpuiApp, AppContext, Context, Entity, EventEmitter, FocusHandle,
+    Focusable, InteractiveElement, IntoElement, ParentElement, Render, StatefulInteractiveElement,
+    Styled, Window,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -29,6 +34,82 @@ pub struct App {
     selected_skill: Option<usize>,
 }
 
+struct SidebarPanel {
+    app: Entity<App>,
+    focus_handle: FocusHandle,
+}
+
+struct ContentPanel {
+    app: Entity<App>,
+    focus_handle: FocusHandle,
+}
+
+impl SidebarPanel {
+    fn new(app: Entity<App>, cx: &mut Context<Self>) -> Self {
+        Self {
+            app,
+            focus_handle: cx.focus_handle(),
+        }
+    }
+}
+
+impl ContentPanel {
+    fn new(app: Entity<App>, cx: &mut Context<Self>) -> Self {
+        Self {
+            app,
+            focus_handle: cx.focus_handle(),
+        }
+    }
+}
+
+macro_rules! impl_dock_panel {
+    ($panel:ty, $name:literal) => {
+        impl EventEmitter<PanelEvent> for $panel {}
+
+        impl Focusable for $panel {
+            fn focus_handle(&self, _: &GpuiApp) -> FocusHandle {
+                self.focus_handle.clone()
+            }
+        }
+
+        impl BasePanel for $panel {
+            fn panel_name(&self) -> &'static str {
+                $name
+            }
+        }
+
+        impl DockPanel for $panel {
+            fn zoom_control(&self, _: &GpuiApp) -> Option<gpui_kit::component::dock::PanelControl> {
+                None
+            }
+        }
+    };
+}
+
+impl_dock_panel!(SidebarPanel, "sidebar");
+impl_dock_panel!(ContentPanel, "content");
+
+impl Render for SidebarPanel {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.app
+            .update(cx, |app, cx| app.sidebar(cx).into_any_element())
+    }
+}
+
+impl Render for ContentPanel {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.app.update(cx, |app, cx| {
+            div()
+                .id("content-scroll")
+                .size_full()
+                .min_h_0()
+                .overflow_y_scroll()
+                .child(div().p_6().child(app.content(cx)))
+                .into_any_element()
+        })
+    }
+}
+
 const PAGE_BACKGROUND: u32 = 0xf4efe6;
 const PANEL_BACKGROUND: u32 = 0xfffcf6;
 const SIDEBAR_BACKGROUND: u32 = 0xd7d8bd;
@@ -36,6 +117,23 @@ const INK: u32 = 0x203a36;
 const MUTED_INK: u32 = 0x67735d;
 const ACTIVE: u32 = 0xefb15d;
 const ACCENT: u32 = 0xd96c3f;
+
+fn nav_icon(name: &'static str) -> AnyElement {
+    let mut icon = div()
+        .size_4()
+        .flex_none()
+        .border_2()
+        .border_color(gpui_kit::rgb(INK));
+    if matches!(name, "user" | "globe") {
+        icon = icon.rounded_full();
+    } else {
+        icon = icon.rounded_sm();
+    }
+    if matches!(name, "building-2" | "chart-pie" | "folder") {
+        icon = icon.bg(gpui_kit::rgb(INK));
+    }
+    icon.into_any_element()
+}
 
 fn section_eyebrow(label: &'static str) -> AnyElement {
     div()
@@ -45,15 +143,12 @@ fn section_eyebrow(label: &'static str) -> AnyElement {
         .into_any_element()
 }
 
-fn badge(label: impl Into<String>) -> AnyElement {
-    div()
-        .px_3()
-        .py_1()
+fn bubble(label: impl Into<String>) -> AnyElement {
+    Bubble::new()
+        .with_variant(BubbleVariant::Tinted)
         .mr_2()
         .mb_2()
-        .bg(gpui_kit::rgb(SIDEBAR_BACKGROUND))
-        .text_color(gpui_kit::rgb(INK))
-        .child(label.into())
+        .child(div().whitespace_nowrap().child(label.into()))
         .into_any_element()
 }
 
@@ -116,6 +211,7 @@ impl App {
         &self,
         label: &'static str,
         section: Section,
+        icon: &'static str,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let active = self.section == section;
@@ -131,7 +227,14 @@ impl App {
                 gpui_kit::rgb(0xe7e8d2)
             })
             .text_color(gpui_kit::rgb(0x203a36))
-            .child(label)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(nav_icon(icon))
+                    .child(label),
+            )
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.section = section;
                 cx.notify();
@@ -143,13 +246,12 @@ impl App {
             .w_64()
             .p_4()
             .bg(gpui_kit::rgb(0xd7d8bd))
-            .child(self.nav_button("o  Overview", Section::Overview, cx))
-            .child(self.nav_button("+  Experience", Section::Experience, cx))
-            .child(self.nav_button("<> Skills", Section::Skills, cx))
-            .child(self.nav_button("@  Geography", Section::Geography, cx))
-            .child(self.nav_button("u  Profile", Section::Profile, cx));
+            .child(self.nav_button("Profile", Section::Profile, "user", cx))
+            .child(self.nav_button("Experience", Section::Experience, "building-2", cx))
+            .child(self.nav_button("Skills", Section::Skills, "chart-pie", cx))
+            .child(self.nav_button("Geography", Section::Geography, "globe", cx));
         if !self.resume.projects.is_empty() {
-            sidebar = sidebar.child(self.nav_button("[] Projects", Section::Projects, cx));
+            sidebar = sidebar.child(self.nav_button("Projects", Section::Projects, "folder", cx));
         }
         if !wordpress_publications(&self.resume).is_empty()
             || self
@@ -159,7 +261,8 @@ impl App {
                 .iter()
                 .any(|profile| profile.network.eq_ignore_ascii_case("wordpress blog"))
         {
-            sidebar = sidebar.child(self.nav_button("=  Blog Posts", Section::BlogPosts, cx));
+            sidebar =
+                sidebar.child(self.nav_button("Blog Posts", Section::BlogPosts, "book-open", cx));
         }
         sidebar
     }
@@ -224,7 +327,7 @@ impl App {
                 .flex()
                 .child(if selected { "v " } else { "> " })
                 .child(skill.name.clone())
-                .child(badge(skill.level.clone()));
+                .child(bubble(skill.level.clone()));
             let mut row = div()
                 .id(format!("skill-{index}"))
                 .w_full()
@@ -275,7 +378,7 @@ impl App {
         let headlines = basics
             .label
             .split(',')
-            .map(|value| badge(value.trim().to_owned()))
+            .map(|value| bubble(value.trim().to_owned()))
             .collect::<Vec<_>>();
         let mut headline_row = div().flex().flex_wrap();
         for headline in headlines {
@@ -311,7 +414,7 @@ impl App {
                     .child(
                         div()
                             .flex_1()
-                            .min_w(gpui_kit::px(0.0))
+                            .min_w(gpui_kit::px(200.0))
                             .child(div().text_3xl().child(basics.name.clone()))
                             .child(headline_row),
                     )
@@ -319,21 +422,30 @@ impl App {
             );
         hero_panel = hero_panel.child(div().mt_6().text_lg().child(basics.summary.clone()));
         let mut view = div().child(hero_panel);
-        if !basics.email.is_empty() {
-            view = view.child(card(div().text_xl().child("Contact").child(
-                div().mt_3().child(Self::link(
-                    "email-contact",
-                    basics.email.clone(),
-                    format!("mailto:{}", basics.email),
-                )),
-            )));
+        let mut groups = div().flex().flex_wrap();
+        if !self.resume.education.is_empty() {
+            groups = groups.child(self.supporting_group(self.education(), "Education"));
         }
-        view = view
-            .child(card(self.education()))
-            .child(card(self.publications()))
-            .child(card(self.network()))
-            .child(card(self.languages()));
+        if !self.resume.publications.is_empty() {
+            groups = groups.child(self.supporting_group(self.publications(), "Publications"));
+        }
+        if !self.resume.basics.profiles.is_empty() {
+            groups = groups.child(self.supporting_group(self.network(), "Network"));
+        }
+        if !self.resume.languages.is_empty() {
+            groups = groups.child(self.supporting_group(self.languages(), "Languages"));
+        }
+        view = view.child(groups);
         view.into_any_element()
+    }
+
+    fn supporting_group(&self, content: AnyElement, title: &'static str) -> AnyElement {
+        div()
+            .flex_1()
+            .min_w(gpui_kit::px(280.0))
+            .m_2()
+            .child(GroupBox::new().outline().title(title).child(content))
+            .into_any_element()
     }
 
     fn link(id: &'static str, label: String, href: String) -> AnyElement {
@@ -428,7 +540,7 @@ impl App {
         for item in &self.resume.projects {
             let mut highlights = div().flex().flex_wrap();
             for highlight in &item.highlights {
-                highlights = highlights.child(badge(highlight.clone()));
+                highlights = highlights.child(bubble(highlight.clone()));
             }
             grid = grid.child(card(
                 div()
@@ -438,7 +550,7 @@ impl App {
                         item.url.clone(),
                     ))
                     .child(highlights)
-                    .child(div().mt_4().child(item.description.clone()))
+                    .child(div().mt_4().child(item.description.clone())),
             ));
         }
         view.child(grid).into_any_element()
@@ -453,6 +565,9 @@ impl App {
             .find(|profile| profile.network.eq_ignore_ascii_case("wordpress blog"));
         let intro = if let Some(profile) = blog_source {
             div()
+                .flex()
+                .items_center()
+                .flex_nowrap()
                 .child("Articles published on the ")
                 .child(Self::link(
                     "wordpress-source",
@@ -461,7 +576,11 @@ impl App {
                 ))
                 .child(" blog.")
         } else {
-            div().child("Articles published from the resume's WordPress entries.")
+            div()
+                .flex()
+                .items_center()
+                .flex_nowrap()
+                .child("Articles published from the resume's WordPress entries.")
         };
         let mut view = div()
             .child(hero(
@@ -469,7 +588,7 @@ impl App {
                 "Musings on experiences in life and programming.",
                 "",
             ))
-            .child(intro);
+            .child(div().whitespace_nowrap().child(intro));
         let posts = wordpress_publications(&self.resume);
         let mut grid = div().flex().flex_wrap();
         for item in &posts {
@@ -484,7 +603,7 @@ impl App {
                         div()
                             .mt_2()
                             .text_sm()
-                            .child(item.release_date.clone().unwrap_or_default()),
+                            .child(format_publication_date(item.release_date.as_deref())),
                     ),
             ));
         }
@@ -524,7 +643,7 @@ impl App {
 }
 
 impl Render for App {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let _ = &self.dock;
         let candidate = if self.resume.basics.name.is_empty() {
             "Resume visualizer".to_owned()
@@ -545,13 +664,7 @@ impl Render for App {
                     .child(div().text_xl().child(candidate))
                     .child(div().w_full().child(self.resume.basics.label.clone())),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .child(self.sidebar(cx))
-                    .child(div().flex_1().p_6().child(self.content(cx))),
-            )
+            .child(div().flex_1().min_h_0().child(self.dock.clone()))
             .child(
                 div()
                     .px_6()
@@ -565,5 +678,49 @@ impl Render for App {
 
 pub fn root_view(window: &mut Window, cx: &mut gpui_kit::App) -> Entity<Root> {
     let view = cx.new(|cx| App::new(window, cx));
+    let sidebar = cx.new(|cx| SidebarPanel::new(view.clone(), cx));
+    let content = cx.new(|cx| ContentPanel::new(view.clone(), cx));
+    view.update(cx, |app, cx| {
+        app.dock.update(cx, |dock, cx| {
+            dock.set_center(DockLayout::tabs().panel(content), window, cx);
+            dock.set_dock(
+                DockPlacement::Left,
+                DockLayout::tabs().panel(sidebar),
+                window,
+                cx,
+            );
+            dock.set_dock_size(DockPlacement::Left, gpui_kit::px(240.0), window, cx);
+        });
+    });
     cx.new(|cx| Root::new(view, window, cx))
+}
+
+fn format_publication_date(value: Option<&str>) -> String {
+    let Some(value) = value else {
+        return String::new();
+    };
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d") {
+        return date.format("%b %Y").to_string();
+    }
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(&format!("{value}-01"), "%Y-%m-%d") {
+        return date.format("%B %Y").to_string();
+    }
+    value.to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_publication_date;
+
+    #[test]
+    fn formats_full_and_partial_publication_dates() {
+        assert_eq!(format_publication_date(Some("2024-02-17")), "Feb 2024");
+        assert_eq!(format_publication_date(Some("2024-02")), "February 2024");
+    }
+
+    #[test]
+    fn preserves_missing_or_unknown_publication_dates() {
+        assert_eq!(format_publication_date(None), "");
+        assert_eq!(format_publication_date(Some("Spring 2024")), "Spring 2024");
+    }
 }
