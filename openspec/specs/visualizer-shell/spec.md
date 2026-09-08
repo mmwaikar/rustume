@@ -17,12 +17,19 @@ The visualizer MUST omit Overview from the primary sidebar, place Profile first,
 - **WHEN** the resume has no projects or WordPress blog data
 - **THEN** the sidebar omits those optional destinations while keeping Profile first
 
-### Requirement: Sidebar icon controls
-Each sidebar destination MUST display a reliable, distinguishable icon together with its accessible text label, and activating either the icon or label MUST select the destination.
+### Requirement: Sidebar icon visibility
+The visualizer MUST keep sidebar destinations readable and distinguishable in the left dock, including the icon glyph and the destination label, without exposing redundant shell identity labels.
 
-#### Scenario: Navigate using an icon
-- **WHEN** a visitor activates a destination icon
-- **THEN** the corresponding section becomes active and the navigation remains visible
+#### Scenario: Sidebar icons are unreadable
+- **WHEN** the resume shell loads and the sidebar is visible
+- **THEN** the navigation icon, its label, and the current selection remain clearly visible and consistent with the app’s palette and sizing
+
+### Requirement: Full sidebar pane painting
+The sidebar pane MUST use the configured background color across the full docked area, even when the content area inside the sidebar is shorter than the pane height.
+
+#### Scenario: Sidebar pane background
+- **WHEN** the left dock pane is taller than its child content
+- **THEN** the pane background fills the full available height and does not stop at the content bounds
 
 ### Requirement: Resizable shell panes
 The visualizer MUST place the sidebar and right content pane in a resizable split, with minimum usable widths for both panes and no zero-width collapse.
