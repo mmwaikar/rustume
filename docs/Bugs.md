@@ -1,5 +1,27 @@
 # Bugs
 
+## 8-Sep-2026
+
+### Round 1 - Pre implementation review
+
+1. Why is there a label called sidebar in sidebar and a label called content in the main content area
+2. The dock works fine but why is the entire sidebar not in green color? The green background is only limited till the content
+3. Why do the Education, Publications, Network and Languages panel each have an extra label outside the panel?
+4. Show Education and Publications in one row and Network and Languages in the next row
+5. In the Network panel, the name of the network e.g. LinkedIn or GitHub is in a separate line and it's value is in the next line. This is wrong and they should be on the same line
+6. In the languages panel, the fluency should be shown as a small bubble
+7. Can we show education in a data grid?
+8. In the Publications panel:
+    - Blog posts should be filtered out
+    - The title itself should be a link, instead of a separate link for Open Publication
+    - The description of the publication should come as a popover
+
+### Round 2 - After AI implementation
+
+- The icons in the sidebar are still not visible - I only see circles or squares
+- Why don't you use a DataTable for showing education?
+- The name of the publication and the publisher / release date appear in 2 different lines. But the name is aligned in center, whereas the second line is aligned to the left. Similarly, the date should be formatted as Mon Year.
+
 ## 7-Sep-2026
 
 1. There should be no Overview link in the sidebar

@@ -1,13 +1,16 @@
 use crate::resume::{
-    company_months, geography_graph, skills_graph, wordpress_publications, Resume, YearMonth,
+    company_months, geography_graph, skills_graph, wordpress_publications, Publication, Resume,
+    YearMonth,
 };
 use gpui_kit::component::{
     bubble::{Bubble, BubbleVariant},
     dock::{
-        BasePanel, DockArea, DockLayout, DockPlacement, DockSkin, Panel as DockPanel, PanelEvent,
+        panel_handle, BasePanel, DockArea, DockLayout, DockPlacement, DockSkin, Panel as DockPanel,
+        PanelEvent,
     },
     group_box::{GroupBox, GroupBoxVariants},
     link::Link,
+    table::{Column, DataTable, TableDelegate, TableState},
     Root,
 };
 use gpui_kit::{
@@ -30,6 +33,8 @@ enum Section {
 pub struct App {
     dock: Entity<DockArea>,
     resume: Resume,
+    education_table: Entity<TableState<EducationTableDelegate>>,
+    publication_table: Entity<TableState<PublicationTableDelegate>>,
     section: Section,
     selected_skill: Option<usize>,
 }
@@ -79,6 +84,10 @@ macro_rules! impl_dock_panel {
         }
 
         impl DockPanel for $panel {
+            fn title(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div()
+            }
+
             fn zoom_control(&self, _: &GpuiApp) -> Option<gpui_kit::component::dock::PanelControl> {
                 None
             }
@@ -152,6 +161,177 @@ fn bubble(label: impl Into<String>) -> AnyElement {
         .into_any_element()
 }
 
+fn compact_bubble(label: impl Into<String>) -> AnyElement {
+    div()
+        .flex_none()
+        .ml_2()
+        .px_1()
+        .py_0()
+        .rounded_sm()
+        .bg(gpui_kit::rgb(ACTIVE))
+        .text_xs()
+        .text_color(gpui_kit::rgb(INK))
+        .child(label.into())
+        .into_any_element()
+}
+
+#[derive(Clone, Debug)]
+struct EducationRow {
+    institution: String,
+    study: String,
+    dates: String,
+    area: String,
+}
+
+struct EducationTableDelegate {
+    rows: Vec<EducationRow>,
+    columns: Vec<Column>,
+}
+
+impl EducationTableDelegate {
+    fn new(rows: Vec<EducationRow>) -> Self {
+        let columns = vec![
+            Column::new("institution", "Institution")
+                .width(350.)
+                .min_width(220.),
+            Column::new("study", "Study").width(400.).min_width(220.),
+            Column::new("dates", "Dates").width(150.).min_width(140.),
+            Column::new("area", "Area").width(100.).min_width(140.),
+        ];
+        Self { rows, columns }
+    }
+}
+
+impl TableDelegate for EducationTableDelegate {
+    fn columns_count(&self, _: &GpuiApp) -> usize {
+        self.columns.len()
+    }
+
+    fn rows_count(&self, _: &GpuiApp) -> usize {
+        self.rows.len()
+    }
+
+    fn column(&self, col_ix: usize, _: &GpuiApp) -> Column {
+        self.columns[col_ix].clone()
+    }
+
+    fn render_td(
+        &mut self,
+        row_ix: usize,
+        col_ix: usize,
+        _: &mut Window,
+        _: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        let row = &self.rows[row_ix];
+        let value = match col_ix {
+            0 => row.institution.clone(),
+            1 => row.study.clone(),
+            2 => row.dates.clone(),
+            3 => row.area.clone(),
+            _ => String::new(),
+        };
+
+        div().text_sm().child(value)
+    }
+}
+
+#[derive(Clone, Debug)]
+struct PublicationRow {
+    name: String,
+    publisher: String,
+    published: String,
+    url: String,
+}
+
+struct PublicationTableDelegate {
+    rows: Vec<PublicationRow>,
+    columns: Vec<Column>,
+}
+
+impl PublicationTableDelegate {
+    fn new(rows: Vec<PublicationRow>) -> Self {
+        let columns = vec![
+            Column::new("name", "Name").width(700.).min_width(420.),
+            Column::new("publisher", "Publisher").width(150.).min_width(110.),
+            Column::new("published", "Published").width(150.).min_width(110.),
+        ];
+        Self { rows, columns }
+    }
+}
+
+impl TableDelegate for PublicationTableDelegate {
+    fn columns_count(&self, _: &GpuiApp) -> usize {
+        self.columns.len()
+    }
+
+    fn rows_count(&self, _: &GpuiApp) -> usize {
+        self.rows.len()
+    }
+
+    fn column(&self, col_ix: usize, _: &GpuiApp) -> Column {
+        self.columns[col_ix].clone()
+    }
+
+    fn render_td(
+        &mut self,
+        row_ix: usize,
+        col_ix: usize,
+        _: &mut Window,
+        _: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        let row = &self.rows[row_ix];
+        let value = match col_ix {
+            0 => row.name.clone(),
+            1 => row.publisher.clone(),
+            2 => row.published.clone(),
+            _ => String::new(),
+        };
+
+        if col_ix == 0 && !row.url.is_empty() {
+            Link::new(format!("publication-table-title-{row_ix}"))
+                .href(row.url.clone())
+                .child(value)
+                .into_any_element()
+        } else {
+            div().text_sm().child(value).into_any_element()
+        }
+    }
+}
+
+fn education_rows(resume: &Resume) -> Vec<EducationRow> {
+    resume
+        .education
+        .iter()
+        .map(|item| EducationRow {
+            institution: item.institution.clone(),
+            study: item.study_type.clone(),
+            dates: match (item.start_date.as_deref(), item.end_date.as_deref()) {
+                (Some(start), Some(end)) if !start.is_empty() && !end.is_empty() => format!(
+                    "{} - {}",
+                    format_publication_date(Some(start)),
+                    format_publication_date(Some(end))
+                ),
+                (Some(start), _) if !start.is_empty() => format_publication_date(Some(start)),
+                (_, Some(end)) if !end.is_empty() => format_publication_date(Some(end)),
+                _ => String::new(),
+            },
+            area: item.area.clone(),
+        })
+        .collect()
+}
+
+fn publication_rows(resume: &Resume) -> Vec<PublicationRow> {
+    profile_publications(resume)
+        .into_iter()
+        .map(|item| PublicationRow {
+            name: item.name.clone(),
+            publisher: item.publisher.clone(),
+            published: format_publication_date(item.release_date.as_deref()),
+            url: item.url.clone(),
+        })
+        .collect()
+}
+
 fn card(content: impl IntoElement) -> AnyElement {
     div()
         .flex_1()
@@ -159,7 +339,6 @@ fn card(content: impl IntoElement) -> AnyElement {
         .m_2()
         .p_6()
         .bg(gpui_kit::rgb(PANEL_BACKGROUND))
-        .border_1()
         .border_color(gpui_kit::rgb(SIDEBAR_BACKGROUND))
         .rounded_lg()
         .child(content)
@@ -194,14 +373,42 @@ fn hero(eyebrow: &'static str, title: impl Into<String>, copy: impl Into<String>
         .into_any_element()
 }
 
+fn profile_publications(resume: &Resume) -> Vec<&Publication> {
+    resume
+        .publications
+        .iter()
+        .filter(|publication| !publication.publisher.eq_ignore_ascii_case("wordpress"))
+        .collect()
+}
+
 impl App {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let (dock, _) = DockSkin::dock_area("rustume", Some(1), window, cx);
         let resume = crate::resume::parse_resume(include_str!("../assets/resume.json"))
             .expect("bundled resume must be valid");
+        let education_delegate = EducationTableDelegate::new(education_rows(&resume));
+        let education_table = cx.new(|cx| {
+            TableState::new(education_delegate, window, cx)
+                .row_selectable(false)
+                .col_selectable(false)
+                .sortable(false)
+                .col_movable(false)
+                .col_resizable(true)
+        });
+        let publication_delegate = PublicationTableDelegate::new(publication_rows(&resume));
+        let publication_table = cx.new(|cx| {
+            TableState::new(publication_delegate, window, cx)
+                .row_selectable(false)
+                .col_selectable(false)
+                .sortable(false)
+                .col_movable(false)
+                .col_resizable(true)
+        });
         Self {
             dock,
             resume,
+            education_table,
+            publication_table,
             section: Section::Overview,
             selected_skill: None,
         }
@@ -244,6 +451,7 @@ impl App {
     fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let mut sidebar = div()
             .w_64()
+            .size_full()
             .p_4()
             .bg(gpui_kit::rgb(0xd7d8bd))
             .child(self.nav_button("Profile", Section::Profile, "user", cx))
@@ -422,26 +630,47 @@ impl App {
             );
         hero_panel = hero_panel.child(div().mt_6().text_lg().child(basics.summary.clone()));
         let mut view = div().child(hero_panel);
-        let mut groups = div().flex().flex_wrap();
+        let mut first_row = div().w_full().flex().flex_wrap();
+        let mut second_row = div().w_full().flex().flex_wrap();
+        let mut first_row_has_groups = false;
+        let mut second_row_has_groups = false;
         if !self.resume.education.is_empty() {
-            groups = groups.child(self.supporting_group(self.education(), "Education"));
-        }
-        if !self.resume.publications.is_empty() {
-            groups = groups.child(self.supporting_group(self.publications(), "Publications"));
+            first_row = first_row.child(self.supporting_group(
+                self.education(),
+                "Education",
+                7.0,
+            ));
+            first_row_has_groups = true;
         }
         if !self.resume.basics.profiles.is_empty() {
-            groups = groups.child(self.supporting_group(self.network(), "Network"));
+            first_row = first_row.child(self.supporting_group(self.network(), "Network", 3.0));
+            first_row_has_groups = true;
+        }
+        if !profile_publications(&self.resume).is_empty() {
+            second_row = second_row.child(self.supporting_group(
+                self.publications(),
+                "Publications",
+                7.0,
+            ));
+            second_row_has_groups = true;
         }
         if !self.resume.languages.is_empty() {
-            groups = groups.child(self.supporting_group(self.languages(), "Languages"));
+            second_row = second_row.child(self.supporting_group(self.languages(), "Languages", 3.0));
+            second_row_has_groups = true;
         }
-        view = view.child(groups);
+        if first_row_has_groups {
+            view = view.child(first_row);
+        }
+        if second_row_has_groups {
+            view = view.child(second_row);
+        }
         view.into_any_element()
     }
 
-    fn supporting_group(&self, content: AnyElement, title: &'static str) -> AnyElement {
+    fn supporting_group(&self, content: AnyElement, title: &'static str, grow: f32) -> AnyElement {
         div()
-            .flex_1()
+            .flex_basis(gpui_kit::px(0.0))
+            .flex_grow(grow)
             .min_w(gpui_kit::px(280.0))
             .m_2()
             .child(GroupBox::new().outline().title(title).child(content))
@@ -453,69 +682,53 @@ impl App {
     }
 
     fn education(&self) -> AnyElement {
-        let mut view = div().child(div().text_2xl().child("Education"));
-        for item in &self.resume.education {
-            view = view.child(
-                div()
-                    .mt_4()
-                    .child(item.study_type.clone())
-                    .child(div().mt_1().child(item.institution.clone()))
-                    .child(div().mt_1().child(format!(
-                        "{} - {}",
-                        item.start_date.clone().unwrap_or_default(),
-                        item.end_date.clone().unwrap_or_default()
-                    )))
-                    .child(div().mt_1().child(item.area.clone())),
-            );
-        }
-        view.into_any_element()
+        div()
+            .w_full()
+            .h(gpui_kit::px(150.0))
+            .child(
+                DataTable::new(&self.education_table)
+                    .bordered(true)
+                    .stripe(false)
+                    .scrollbar_visible(true, false),
+            )
+            .into_any_element()
     }
 
     fn publications(&self) -> AnyElement {
-        let mut view = div().child(div().text_2xl().child("Publications"));
-        for item in &self.resume.publications {
-            let source = if item.url.is_empty() {
-                div().into_any_element()
-            } else {
-                Self::link(
-                    "publication-source",
-                    "Open publication".to_owned(),
-                    item.url.clone(),
-                )
-            };
-            view = view.child(
-                div()
-                    .mt_4()
-                    .child(item.name.clone())
-                    .child(div().mt_1().child(format!(
-                        "{} | {}",
-                        item.publisher,
-                        item.release_date.clone().unwrap_or_default()
-                    )))
-                    .child(div().mt_1().child(item.summary.clone()))
-                    .child(div().mt_1().child(source)),
-            );
-        }
-        view.into_any_element()
+        div()
+            .w_full()
+            .h(gpui_kit::px(150.0))
+            .child(
+                DataTable::new(&self.publication_table)
+                    .bordered(true)
+                    .stripe(false)
+                    .scrollbar_visible(true, false),
+            )
+            .into_any_element()
     }
 
     fn languages(&self) -> AnyElement {
-        let mut view = div().child(div().text_2xl().child("Languages"));
+        let mut view = div();
         for item in &self.resume.languages {
             view = view.child(
                 div()
+                    .flex()
+                    .items_start()
                     .mt_3()
-                    .child(format!("{} - {}", item.language, item.fluency)),
+                    .child(item.language.clone())
+                    .child(compact_bubble(item.fluency.clone())),
             );
         }
         view.into_any_element()
     }
 
     fn network(&self) -> AnyElement {
-        let mut view = div().child(div().text_2xl().child("Network"));
+        let mut view = div();
         for (index, item) in self.resume.basics.profiles.iter().enumerate() {
             view = view.child(
                 div()
+                    .flex()
+                    .items_center()
                     .mt_3()
                     .child(format!("{}: ", item.network))
                     .child(Self::link(
@@ -682,10 +895,14 @@ pub fn root_view(window: &mut Window, cx: &mut gpui_kit::App) -> Entity<Root> {
     let content = cx.new(|cx| ContentPanel::new(view.clone(), cx));
     view.update(cx, |app, cx| {
         app.dock.update(cx, |dock, cx| {
-            dock.set_center(DockLayout::tabs().panel(content), window, cx);
+            dock.set_center(
+                DockLayout::tabs().panel_view(panel_handle(content), cx),
+                window,
+                cx,
+            );
             dock.set_dock(
                 DockPlacement::Left,
-                DockLayout::tabs().panel(sidebar),
+                DockLayout::tabs().panel_view(panel_handle(sidebar), cx),
                 window,
                 cx,
             );
@@ -710,7 +927,45 @@ fn format_publication_date(value: Option<&str>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::format_publication_date;
+    use super::{format_publication_date, profile_publications};
+    use crate::resume::{Publication, Resume};
+
+    fn publication(publisher: &str) -> Publication {
+        Publication {
+            name: publisher.to_owned(),
+            publisher: publisher.to_owned(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn profile_publications_excludes_wordpress_entries_case_insensitively() {
+        let resume = Resume {
+            publications: vec![
+                publication("ACM"),
+                publication("WordPress"),
+                publication("wordpress"),
+            ],
+            ..Default::default()
+        };
+
+        let publications = profile_publications(&resume);
+
+        assert_eq!(publications.len(), 1);
+        assert_eq!(publications[0].publisher, "ACM");
+    }
+
+    #[test]
+    fn profile_publications_is_empty_for_blog_only_or_empty_input() {
+        let empty = Resume::default();
+        let blog_only = Resume {
+            publications: vec![publication("WordPress")],
+            ..Default::default()
+        };
+
+        assert!(profile_publications(&empty).is_empty());
+        assert!(profile_publications(&blog_only).is_empty());
+    }
 
     #[test]
     fn formats_full_and_partial_publication_dates() {
@@ -723,4 +978,5 @@ mod tests {
         assert_eq!(format_publication_date(None), "");
         assert_eq!(format_publication_date(Some("Spring 2024")), "Spring 2024");
     }
+
 }
