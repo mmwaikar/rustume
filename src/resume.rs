@@ -353,16 +353,52 @@ pub fn skills_graph(resume: &Resume) -> GraphPayload {
             label: skill.name.clone(),
             group: "skill".to_owned(),
         });
-        keywords.push((
-            skill.name.clone(),
+        let normalized_keywords =
             skill
                 .keywords
                 .iter()
-                .map(|value| value.to_lowercase())
-                .collect::<BTreeSet<_>>(),
+                .fold(BTreeMap::new(), |mut values, value| {
+                    values
+                        .entry(value.to_lowercase())
+                        .or_insert_with(|| value.clone());
+                    values
+                });
+        for (normalized, label) in &normalized_keywords {
+            let child_id = graph_id("skill-keyword", &format!("{}-{normalized}", skill.name));
+            nodes.entry(child_id).or_insert(GraphNode {
+                id: graph_id("skill-keyword", &format!("{}-{normalized}", skill.name)),
+                label: label.clone(),
+                group: "skill-keyword".to_owned(),
+            });
+        }
+        keywords.push((
+            skill.name.clone(),
+            normalized_keywords.keys().cloned().collect::<BTreeSet<_>>(),
         ));
     }
     let mut edges = Vec::new();
+    for skill in &resume.skills {
+        let parent = graph_id("skill", &skill.name);
+        let normalized_keywords =
+            skill
+                .keywords
+                .iter()
+                .fold(BTreeMap::new(), |mut values, value| {
+                    values
+                        .entry(value.to_lowercase())
+                        .or_insert_with(|| value.clone());
+                    values
+                });
+        for normalized in normalized_keywords.keys() {
+            let child = graph_id("skill-keyword", &format!("{}-{normalized}", skill.name));
+            edges.push(GraphEdge {
+                id: format!("{parent}->{child}"),
+                source: parent.clone(),
+                target: child,
+                label: Some("sub-skill".to_owned()),
+            });
+        }
+    }
     for (index, (left, left_keywords)) in keywords.iter().enumerate() {
         for (right, right_keywords) in keywords.iter().skip(index + 1) {
             if left_keywords.intersection(right_keywords).next().is_some() {
@@ -461,12 +497,65 @@ mod tests {
         assert!(geography.nodes.iter().any(|node| node.label == "Unknown"));
         let skills = skills_graph(&resume);
         assert!(skills.nodes.iter().any(|node| node.label == "Writing"));
-        assert_eq!(skills.edges.len(), 1);
+        assert_eq!(
+            skills
+                .nodes
+                .iter()
+                .filter(|node| node.group == "skill")
+                .count(),
+            3
+        );
+        assert!(skills
+            .nodes
+            .iter()
+            .any(|node| node.group == "skill-keyword" && node.label == "systems"));
+        assert!(skills
+            .edges
+            .iter()
+            .any(|edge| edge.label.as_deref() == Some("sub-skill")));
+        assert!(skills
+            .edges
+            .iter()
+            .any(|edge| edge.label.as_deref() == Some("shared keyword")));
         assert!(skills.edges.iter().all(|edge| skills
             .nodes
             .iter()
             .any(|node| node.id == edge.source)
             && skills.nodes.iter().any(|node| node.id == edge.target)));
+    }
+
+    #[test]
+    fn skills_graph_deduplicates_keyword_children_per_parent() {
+        let resume = Resume {
+            skills: vec![Skill {
+                name: "Rust".to_owned(),
+                keywords: vec![
+                    "Systems".to_owned(),
+                    "systems".to_owned(),
+                    "Async".to_owned(),
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let graph = skills_graph(&resume);
+        let children = graph
+            .nodes
+            .iter()
+            .filter(|node| node.group == "skill-keyword")
+            .collect::<Vec<_>>();
+        assert_eq!(children.len(), 2);
+        assert!(children.iter().any(|node| node.label == "Systems"));
+        assert!(children.iter().any(|node| node.label == "Async"));
+        assert_eq!(
+            graph
+                .edges
+                .iter()
+                .filter(|edge| edge.label.as_deref() == Some("sub-skill"))
+                .count(),
+            2
+        );
     }
 
     #[test]

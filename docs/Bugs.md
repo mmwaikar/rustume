@@ -1,6 +1,24 @@
 # Bugs
 
+## 9-Sep-2026
+
+### Round 1 - Pre implementation review
+
+- I want to use a StatusBar (https://gpui-kit.com/component/status-bar/) for the footer
+- Right now, none of the text is selectable, can you please use the Text Selection (https://gpui-kit.com/base/text-selection/) everywhere
+- Can you use fonts along with a Theme as described in https://gpui-kit.com/docs/fonts/? I wan to try the Inter font as described, the current font looks too big
+- Icon Regression (from Round 2, 8-Sep-2026) - please use the Icons & Assets as described here - https://gpui-kit.com/docs/assets/. Right now the icons in the sidebar are still not visible - I only see circles or squares
+- Experience shows a bar chart where the bars are horizontal. I want to show vertical bars with rounded corners (see Bar Chart Bottom aligned). Also the names of the companies is long, so if possible, the names should be diagonally tilted
+- In the skills treeview, the bubble is bigger than the skill name, Make it similar to the Language fluency bubble. Also the sub-skills are shown in a single node separated by *. Each sub-skill should be a child node of the main skill node
+- When I run the application, the window should be maximized
+
 ## 8-Sep-2026
+
+### Round 2 - After AI implementation
+
+- The icons in the sidebar are still not visible - I only see circles or squares
+- Why don't you use a DataTable for showing education?
+- The name of the publication and the publisher / release date appear in 2 different lines. But the name is aligned in center, whereas the second line is aligned to the left. Similarly, the date should be formatted as Mon Year.
 
 ### Round 1 - Pre implementation review
 
@@ -15,12 +33,6 @@
     - Blog posts should be filtered out
     - The title itself should be a link, instead of a separate link for Open Publication
     - The description of the publication should come as a popover
-
-### Round 2 - After AI implementation
-
-- The icons in the sidebar are still not visible - I only see circles or squares
-- Why don't you use a DataTable for showing education?
-- The name of the publication and the publisher / release date appear in 2 different lines. But the name is aligned in center, whereas the second line is aligned to the left. Similarly, the date should be formatted as Mon Year.
 
 ## 7-Sep-2026
 

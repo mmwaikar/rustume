@@ -2,6 +2,7 @@ use crate::resume::{
     company_months, geography_graph, skills_graph, wordpress_publications, Publication, Resume,
     YearMonth,
 };
+use gpui_kit::base::SelectableText;
 use gpui_kit::component::{
     bubble::{Bubble, BubbleVariant},
     dock::{
@@ -10,8 +11,10 @@ use gpui_kit::component::{
     },
     group_box::{GroupBox, GroupBoxVariants},
     link::Link,
+    scroll::ScrollableElement,
+    status_bar::StatusBar,
     table::{Column, DataTable, TableDelegate, TableState},
-    Root,
+    Icon, IconName, Root,
 };
 use gpui_kit::{
     div, AnyElement, App as GpuiApp, AppContext, Context, Entity, EventEmitter, FocusHandle,
@@ -128,50 +131,55 @@ const ACTIVE: u32 = 0xefb15d;
 const ACCENT: u32 = 0xd96c3f;
 
 fn nav_icon(name: &'static str) -> AnyElement {
-    let mut icon = div()
+    let icon = match name {
+        "book-open" => IconName::BookOpen,
+        "building-2" => IconName::Building2,
+        "chart-pie" => IconName::ChartPie,
+        "folder" => IconName::Folder,
+        "globe" => IconName::Globe,
+        "user" => IconName::User,
+        _ => IconName::TriangleAlert,
+    };
+    Icon::new(icon)
         .size_4()
-        .flex_none()
-        .border_2()
-        .border_color(gpui_kit::rgb(INK));
-    if matches!(name, "user" | "globe") {
-        icon = icon.rounded_full();
-    } else {
-        icon = icon.rounded_sm();
-    }
-    if matches!(name, "building-2" | "chart-pie" | "folder") {
-        icon = icon.bg(gpui_kit::rgb(INK));
-    }
-    icon.into_any_element()
+        .text_color(gpui_kit::rgb(INK))
+        .into_any_element()
 }
 
 fn section_eyebrow(label: &'static str) -> AnyElement {
     div()
         .text_sm()
         .text_color(gpui_kit::rgb(MUTED_INK))
-        .child(label)
+        .child(selectable_text(format!("eyebrow-{label}"), label))
         .into_any_element()
 }
 
+fn selectable_text(id: impl Into<gpui_kit::ElementId>, value: impl Into<String>) -> AnyElement {
+    SelectableText::new(id, value.into()).into_any_element()
+}
+
 fn bubble(label: impl Into<String>) -> AnyElement {
+    let label = label.into();
     Bubble::new()
         .with_variant(BubbleVariant::Tinted)
         .mr_2()
         .mb_2()
-        .child(div().whitespace_nowrap().child(label.into()))
+        .child(
+            div()
+                .whitespace_nowrap()
+                .child(selectable_text(label.clone(), label)),
+        )
         .into_any_element()
 }
 
 fn compact_bubble(label: impl Into<String>) -> AnyElement {
-    div()
+    let label = label.into();
+    Bubble::new()
+        .with_variant(BubbleVariant::Tinted)
         .flex_none()
         .ml_2()
-        .px_1()
-        .py_0()
-        .rounded_sm()
-        .bg(gpui_kit::rgb(ACTIVE))
         .text_xs()
-        .text_color(gpui_kit::rgb(INK))
-        .child(label.into())
+        .child(selectable_text(format!("compact-bubble-{label}"), label))
         .into_any_element()
 }
 
@@ -231,7 +239,7 @@ impl TableDelegate for EducationTableDelegate {
             _ => String::new(),
         };
 
-        div().text_sm().child(value)
+        selectable_text(format!("education-{row_ix}-{col_ix}"), value)
     }
 }
 
@@ -252,8 +260,12 @@ impl PublicationTableDelegate {
     fn new(rows: Vec<PublicationRow>) -> Self {
         let columns = vec![
             Column::new("name", "Name").width(700.).min_width(420.),
-            Column::new("publisher", "Publisher").width(150.).min_width(110.),
-            Column::new("published", "Published").width(150.).min_width(110.),
+            Column::new("publisher", "Publisher")
+                .width(150.)
+                .min_width(110.),
+            Column::new("published", "Published")
+                .width(150.)
+                .min_width(110.),
         ];
         Self { rows, columns }
     }
@@ -290,10 +302,13 @@ impl TableDelegate for PublicationTableDelegate {
         if col_ix == 0 && !row.url.is_empty() {
             Link::new(format!("publication-table-title-{row_ix}"))
                 .href(row.url.clone())
-                .child(value)
+                .child(selectable_text(
+                    format!("publication-title-{row_ix}"),
+                    value,
+                ))
                 .into_any_element()
         } else {
-            div().text_sm().child(value).into_any_element()
+            selectable_text(format!("publication-{row_ix}-{col_ix}"), value)
         }
     }
 }
@@ -361,14 +376,14 @@ fn hero(eyebrow: &'static str, title: impl Into<String>, copy: impl Into<String>
                 .mt_2()
                 .text_3xl()
                 .text_color(gpui_kit::rgb(INK))
-                .child(title.into()),
+                .child(selectable_text("hero-title", title.into())),
         )
         .child(
             div()
                 .mt_3()
                 .text_lg()
                 .text_color(gpui_kit::rgb(INK))
-                .child(copy.into()),
+                .child(selectable_text("hero-copy", copy.into())),
         )
         .into_any_element()
 }
@@ -440,7 +455,7 @@ impl App {
                     .items_center()
                     .gap_2()
                     .child(nav_icon(icon))
-                    .child(label),
+                    .child(selectable_text(format!("nav-{label}"), label)),
             )
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.section = section;
@@ -478,34 +493,43 @@ impl App {
     fn content(&self, cx: &mut Context<Self>) -> AnyElement {
         match self.section {
             Section::Overview => div()
-                .child(div().text_2xl().child("Overview"))
                 .child(
                     div()
-                        .mt_4()
-                        .text_lg()
-                        .child(self.resume.basics.summary.clone()),
+                        .text_2xl()
+                        .child(selectable_text("overview-heading", "Overview")),
                 )
+                .child(div().mt_4().text_lg().child(selectable_text(
+                    "overview-summary",
+                    self.resume.basics.summary.clone(),
+                )))
                 .into_any_element(),
             Section::Experience => self.experience(),
             Section::Skills => self.skills(cx),
             Section::Geography => {
                 let graph = geography_graph(&self.resume);
                 div()
-                    .child(div().text_2xl().child("Experience by country"))
-                    .child(div().mt_4().child(format!(
-                        "{} companies and countries | {} relationships",
-                        graph.nodes.len(),
-                        graph.edges.len()
+                    .child(div().text_2xl().child(selectable_text(
+                        "geography-heading",
+                        "Experience by country",
+                    )))
+                    .child(div().mt_4().child(selectable_text(
+                        "geography-summary",
+                        format!(
+                            "{} companies and countries | {} relationships",
+                            graph.nodes.len(),
+                            graph.edges.len()
+                        ),
                     )))
                     .child(
-                        div().mt_4().child(
+                        div().mt_4().child(selectable_text(
+                            "geography-nodes",
                             graph
                                 .nodes
                                 .into_iter()
                                 .map(|node| node.label)
                                 .collect::<Vec<_>>()
                                 .join("  *  "),
-                        ),
+                        )),
                     )
                     .into_any_element()
             }
@@ -523,19 +547,27 @@ impl App {
                 "Technical strengths",
                 "Skills with their related keywords.",
             ))
-            .child(div().mb_4().child(format!(
-                "{} skill nodes | {} relationships",
-                graph.nodes.len(),
-                graph.edges.len()
+            .child(div().mb_4().child(selectable_text(
+                "skills-summary",
+                format!(
+                    "{} skill nodes | {} relationships",
+                    graph.nodes.len(),
+                    graph.edges.len()
+                ),
             )));
         for (index, skill) in self.resume.skills.iter().enumerate() {
             let selected = self.selected_skill == Some(index);
-            let keywords = skill.keywords.join("  *  ");
             let header = div()
                 .flex()
-                .child(if selected { "v " } else { "> " })
-                .child(skill.name.clone())
-                .child(bubble(skill.level.clone()));
+                .child(selectable_text(
+                    format!("skill-toggle-{index}"),
+                    if selected { "v " } else { "> " },
+                ))
+                .child(selectable_text(
+                    format!("skill-name-{index}"),
+                    skill.name.clone(),
+                ))
+                .child(compact_bubble(skill.level.clone()));
             let mut row = div()
                 .id(format!("skill-{index}"))
                 .w_full()
@@ -557,14 +589,19 @@ impl App {
                     cx.notify();
                 }));
             if selected {
-                row = row.child(
-                    div()
-                        .ml_6()
-                        .mt_2()
-                        .text_sm()
-                        .text_color(gpui_kit::rgb(MUTED_INK))
-                        .child(keywords),
-                );
+                for (keyword_index, keyword) in skill.keywords.iter().enumerate() {
+                    row = row.child(
+                        div()
+                            .ml_6()
+                            .mt_2()
+                            .text_sm()
+                            .text_color(gpui_kit::rgb(MUTED_INK))
+                            .child(selectable_text(
+                                format!("skill-{index}-keyword-{keyword_index}"),
+                                keyword.clone(),
+                            )),
+                    );
+                }
             }
             view = view.child(row);
         }
@@ -583,14 +620,9 @@ impl App {
                 )
             })
             .unwrap_or_default();
-        let headlines = basics
-            .label
-            .split(',')
-            .map(|value| bubble(value.trim().to_owned()))
-            .collect::<Vec<_>>();
         let mut headline_row = div().flex().flex_wrap();
-        for headline in headlines {
-            headline_row = headline_row.child(headline);
+        for value in basics.label.split(',') {
+            headline_row = headline_row.child(bubble(value.trim().to_owned()));
         }
         let contact = div()
             .min_w(gpui_kit::px(150.0))
@@ -599,12 +631,20 @@ impl App {
             } else {
                 Self::link(
                     "email",
-                    "Email".to_owned(),
+                    basics.email.clone(),
                     format!("mailto:{}", basics.email),
                 )
             })
-            .child(div().mt_3().child(basics.phone.clone()))
-            .child(div().mt_3().child(location));
+            .child(
+                div()
+                    .mt_3()
+                    .child(selectable_text("profile-phone", basics.phone.clone())),
+            )
+            .child(
+                div()
+                    .mt_3()
+                    .child(selectable_text("profile-location", location)),
+            );
         let mut hero_panel = div()
             .w_full()
             .p_6()
@@ -623,23 +663,28 @@ impl App {
                         div()
                             .flex_1()
                             .min_w(gpui_kit::px(200.0))
-                            .child(div().text_3xl().child(basics.name.clone()))
+                            .child(
+                                div()
+                                    .text_3xl()
+                                    .child(selectable_text("profile-name", basics.name.clone())),
+                            )
                             .child(headline_row),
                     )
                     .child(contact),
             );
-        hero_panel = hero_panel.child(div().mt_6().text_lg().child(basics.summary.clone()));
+        hero_panel = hero_panel.child(
+            div()
+                .mt_6()
+                .text_lg()
+                .child(selectable_text("profile-summary", basics.summary.clone())),
+        );
         let mut view = div().child(hero_panel);
         let mut first_row = div().w_full().flex().flex_wrap();
         let mut second_row = div().w_full().flex().flex_wrap();
         let mut first_row_has_groups = false;
         let mut second_row_has_groups = false;
         if !self.resume.education.is_empty() {
-            first_row = first_row.child(self.supporting_group(
-                self.education(),
-                "Education",
-                7.0,
-            ));
+            first_row = first_row.child(self.supporting_group(self.education(), "Education", 7.0));
             first_row_has_groups = true;
         }
         if !self.resume.basics.profiles.is_empty() {
@@ -647,15 +692,13 @@ impl App {
             first_row_has_groups = true;
         }
         if !profile_publications(&self.resume).is_empty() {
-            second_row = second_row.child(self.supporting_group(
-                self.publications(),
-                "Publications",
-                7.0,
-            ));
+            second_row =
+                second_row.child(self.supporting_group(self.publications(), "Publications", 7.0));
             second_row_has_groups = true;
         }
         if !self.resume.languages.is_empty() {
-            second_row = second_row.child(self.supporting_group(self.languages(), "Languages", 3.0));
+            second_row =
+                second_row.child(self.supporting_group(self.languages(), "Languages", 3.0));
             second_row_has_groups = true;
         }
         if first_row_has_groups {
@@ -678,7 +721,10 @@ impl App {
     }
 
     fn link(id: &'static str, label: String, href: String) -> AnyElement {
-        Link::new(id).href(href).child(label).into_any_element()
+        Link::new(id)
+            .href(href)
+            .child(selectable_text(format!("{id}-label"), label))
+            .into_any_element()
     }
 
     fn education(&self) -> AnyElement {
@@ -709,13 +755,16 @@ impl App {
 
     fn languages(&self) -> AnyElement {
         let mut view = div();
-        for item in &self.resume.languages {
+        for (index, item) in self.resume.languages.iter().enumerate() {
             view = view.child(
                 div()
                     .flex()
                     .items_start()
                     .mt_3()
-                    .child(item.language.clone())
+                    .child(selectable_text(
+                        format!("language-{index}"),
+                        item.language.clone(),
+                    ))
                     .child(compact_bubble(item.fluency.clone())),
             );
         }
@@ -730,7 +779,10 @@ impl App {
                     .flex()
                     .items_center()
                     .mt_3()
-                    .child(format!("{}: ", item.network))
+                    .child(selectable_text(
+                        format!("network-name-{index}"),
+                        format!("{}: ", item.network),
+                    ))
                     .child(Self::link(
                         "network-profile",
                         item.username.clone(),
@@ -746,11 +798,14 @@ impl App {
         let view = div().child(hero("PROJECTS", "Selected works", "GitHub code samples."));
         if self.resume.projects.is_empty() {
             return view
-                .child(div().mt_4().child("No projects are available."))
+                .child(div().mt_4().child(selectable_text(
+                    "projects-empty",
+                    "No projects are available.",
+                )))
                 .into_any_element();
         }
         let mut grid = div().flex().flex_wrap();
-        for item in &self.resume.projects {
+        for (index, item) in self.resume.projects.iter().enumerate() {
             let mut highlights = div().flex().flex_wrap();
             for highlight in &item.highlights {
                 highlights = highlights.child(bubble(highlight.clone()));
@@ -763,7 +818,10 @@ impl App {
                         item.url.clone(),
                     ))
                     .child(highlights)
-                    .child(div().mt_4().child(item.description.clone())),
+                    .child(div().mt_4().child(selectable_text(
+                        format!("project-description-{index}"),
+                        item.description.clone(),
+                    ))),
             ));
         }
         view.child(grid).into_any_element()
@@ -781,19 +839,25 @@ impl App {
                 .flex()
                 .items_center()
                 .flex_nowrap()
-                .child("Articles published on the ")
+                .child(selectable_text(
+                    "blog-intro-before",
+                    "Articles published on the ",
+                ))
                 .child(Self::link(
                     "wordpress-source",
                     "WordPress".to_owned(),
                     profile.url.clone(),
                 ))
-                .child(" blog.")
+                .child(selectable_text("blog-intro-after", " blog."))
         } else {
             div()
                 .flex()
                 .items_center()
                 .flex_nowrap()
-                .child("Articles published from the resume's WordPress entries.")
+                .child(selectable_text(
+                    "blog-intro-only",
+                    "Articles published from the resume's WordPress entries.",
+                ))
         };
         let mut view = div()
             .child(hero(
@@ -804,7 +868,7 @@ impl App {
             .child(div().whitespace_nowrap().child(intro));
         let posts = wordpress_publications(&self.resume);
         let mut grid = div().flex().flex_wrap();
-        for item in &posts {
+        for (index, item) in posts.iter().enumerate() {
             grid = grid.child(card(
                 div()
                     .child(Self::link(
@@ -812,16 +876,17 @@ impl App {
                         item.name.clone(),
                         item.url.clone(),
                     ))
-                    .child(
-                        div()
-                            .mt_2()
-                            .text_sm()
-                            .child(format_publication_date(item.release_date.as_deref())),
-                    ),
+                    .child(div().mt_2().text_sm().child(selectable_text(
+                        format!("blog-date-{index}"),
+                        format_publication_date(item.release_date.as_deref()),
+                    ))),
             ));
         }
         if posts.is_empty() {
-            view = view.child(div().mt_4().child("No blog posts are available."));
+            view = view.child(div().mt_4().child(selectable_text(
+                "blog-empty",
+                "No blog posts are available.",
+            )));
         } else {
             view = view.child(grid);
         }
@@ -831,26 +896,74 @@ impl App {
     fn experience(&self) -> AnyElement {
         let totals = company_months(&self.resume, YearMonth::current()).unwrap_or_default();
         let max = totals.values().copied().max().unwrap_or(1);
-        let mut view = div().child(div().text_2xl().child("Experience by company"));
+        let mut view = div().child(div().text_2xl().child(selectable_text(
+            "experience-heading",
+            "Experience by company",
+        )));
         if totals.is_empty() {
             return view
-                .child(div().mt_6().child("No work history is available to chart."))
+                .child(div().mt_6().child(selectable_text(
+                    "experience-empty",
+                    "No work history is available to chart.",
+                )))
                 .into_any_element();
         }
+
+        let mut chart = div()
+            .mt_6()
+            .w_full()
+            .h(gpui_kit::px(380.0))
+            .p_4()
+            .flex()
+            .items_end()
+            .gap_4()
+            .overflow_x_scrollbar()
+            .border_1()
+            .border_color(gpui_kit::rgb(SIDEBAR_BACKGROUND));
         for (company, months) in totals {
-            view = view.child(
+            let bar_height = experience_bar_height(months, max);
+            chart = chart.child(
                 div()
-                    .mt_4()
-                    .child(company)
+                    .w(gpui_kit::px(140.0))
+                    .h_full()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_end()
+                    .flex_none()
                     .child(
                         div()
-                            .h_4()
-                            .w(gpui_kit::px((80 + months * 320 / max) as f32))
-                            .bg(gpui_kit::rgb(ACCENT)),
+                            .h(gpui_kit::px(260.0))
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .justify_end()
+                            .child(selectable_text(
+                                format!("experience-value-{company}"),
+                                format!("{months} months"),
+                            ))
+                            .child(
+                                div()
+                                    .w(gpui_kit::px(56.0))
+                                    .h(gpui_kit::px(bar_height as f32))
+                                    .rounded_lg()
+                                    .bg(gpui_kit::rgb(ACCENT)),
+                            ),
                     )
-                    .child(format!("{months} months")),
+                    .child(
+                        div()
+                            .mt_2()
+                            .w(gpui_kit::px(140.0))
+                            .text_center()
+                            .whitespace_normal()
+                            .child(selectable_text(
+                                format!("experience-company-{company}"),
+                                company,
+                            )),
+                    ),
             );
         }
+        view = view.child(chart);
         view.into_any_element()
     }
 }
@@ -874,17 +987,21 @@ impl Render for App {
                     .py_4()
                     .bg(gpui_kit::rgb(0x203a36))
                     .text_color(gpui_kit::rgb(0xf4efe6))
-                    .child(div().text_xl().child(candidate))
-                    .child(div().w_full().child(self.resume.basics.label.clone())),
+                    .child(
+                        div()
+                            .text_xl()
+                            .child(selectable_text("header-candidate", candidate)),
+                    )
+                    .child(div().w_full().child(selectable_text(
+                        "header-label",
+                        self.resume.basics.label.clone(),
+                    ))),
             )
             .child(div().flex_1().min_h_0().child(self.dock.clone()))
             .child(
-                div()
-                    .px_6()
-                    .py_3()
-                    .bg(gpui_kit::rgb(0x203a36))
-                    .text_color(gpui_kit::rgb(0xd7d8bd))
-                    .child("Rustume | Built with Rust and GPUI"),
+                StatusBar::new()
+                    .left(selectable_text("footer-name", "Rustume"))
+                    .right(selectable_text("footer-copy", "Built with Rust and GPUI")),
             )
     }
 }
@@ -925,9 +1042,13 @@ fn format_publication_date(value: Option<&str>) -> String {
     value.to_owned()
 }
 
+fn experience_bar_height(months: u32, maximum_months: u32) -> u32 {
+    48 + months * 220 / maximum_months.max(1)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{format_publication_date, profile_publications};
+    use super::{experience_bar_height, format_publication_date, profile_publications};
     use crate::resume::{Publication, Resume};
 
     fn publication(publisher: &str) -> Publication {
@@ -979,4 +1100,11 @@ mod tests {
         assert_eq!(format_publication_date(Some("Spring 2024")), "Spring 2024");
     }
 
+    #[test]
+    fn experience_bars_scale_from_a_common_baseline() {
+        assert_eq!(experience_bar_height(0, 12), 48);
+        assert_eq!(experience_bar_height(6, 12), 158);
+        assert_eq!(experience_bar_height(12, 12), 268);
+        assert_eq!(experience_bar_height(12, 0), 2688);
+    }
 }
