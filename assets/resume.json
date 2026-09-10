@@ -5,7 +5,7 @@
     "picture": "",
     "email": "maxyz@email.com",
     "phone": "+49 1234567890",
-    "website": "http://mmwaikar.wordpress.com",
+    "website": "https://mmwaikar.wordpress.com",
     "summary": "25+ years of experience building micro-services, REST APIs, SPAs, thick clients (on JVM / .Net) using FP (F#, Scala, Clojure) & OO (Java, C#, JS) languages with NoSQL, Graph & Relational Databases. International experience in Germany (~2 years), USA (3+ years) and remaining in India.",
     "location": {
       "address": "Feldbergstraße 127",
@@ -332,6 +332,13 @@
       "releaseDate": "2016-07-18",
       "url": "https://www.omg.org/sysml/MBSE++%20Bajaj_INCOSE_IS-2016.pdf",
       "summary": "This paper presents an approach for next-generation model-based systems engineering across the system lifecycle, labelled MBSE++."
+    },
+    {
+      "name": "A Backend Developer’s Portfolio",
+      "publisher": "WordPress",
+      "releaseDate": "2026-08-30",
+      "url": "https://mmwaikar.wordpress.com/2026/08/30/a-backend-developers-portfolio/",
+      "summary": ""
     },
     {
       "name": "DSLs in Rust",
