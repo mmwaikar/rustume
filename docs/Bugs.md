@@ -2,6 +2,19 @@
 
 ## 10-Sep-2026
 
+### Round 3 - After one more AI implementation
+
+- Regression - Although the ordering is correct, the experience by company bars are now in the same color, not colors per country. And the legend at the bottom says Unknown (the color of the legend and the bars is the same). Can't the legend appear somewhere on the chart, instead of at the bottom?
+- Regression - all the other links, anywhere in the app (like links to blog posts, or projects) do not appear in the default blue color
+
+### Round 2 - After AI implementation
+
+- Why don't we use [Icons and Assets](https://gpui-kit.com/docs/assets/) as described in this link? If we use this, we'll be able to use heart, user-round or any other icons from this create directly
+- Regression - The links in the footer do not appear in the default blue color
+- Regression - The heart emoji (or icon) does not appear in red color (it's black right now)
+- Regression - The text in the language fluency bubbles is displayed vertically (so the bubble itself displays vertically, not horizontally)
+- Regression - The experience by company should order the experience in the newest first order. Right now it seems to be sorted by company name. Also can we show the experience by each country in a different color (so all US experience in a separate color, and so on)? And can we also include a legend for countries?
+
 ### Round 1 - Pre implementation review
 
 - Regression - The vertical bars don't look good because the company names are too big. If the name can't be made diagonal, then maybe we should keep the bar chart horizontal. Keep using the chart component - https://gpui-kit.com/component/chart/. Either show the company name in the bar, or do not stack the company name and the bar vertically (one below the other), but stacked horizontally (left to right)

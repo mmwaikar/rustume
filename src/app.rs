@@ -131,6 +131,8 @@ const SIDEBAR_BACKGROUND: u32 = 0xd7d8bd;
 const INK: u32 = 0x203a36;
 const MUTED_INK: u32 = 0x67735d;
 const ACTIVE: u32 = 0xefb15d;
+const DEFAULT_LINK_BLUE: u32 = 0x2563eb;
+const UNKNOWN_COUNTRY_COLOR: u32 = 0x6b7280;
 const FOOTER_RUST_URL: &str = "https://rust-lang.org/";
 const FOOTER_GPUI_KIT_URL: &str = "https://gpui-kit.com";
 
@@ -723,6 +725,7 @@ impl App {
     fn link(id: &'static str, label: String, href: String) -> AnyElement {
         Link::new(id)
             .href(href)
+            .text_color(gpui_kit::rgb(DEFAULT_LINK_BLUE))
             .child(selectable_text(format!("{id}-label"), label))
             .into_any_element()
     }
@@ -934,17 +937,6 @@ impl App {
             .grid(false)
             .value_axis(true);
 
-        view = view.child(
-            div()
-                .mt_6()
-                .w_full()
-                .h(chart_height)
-                .p_4()
-                .overflow_x_scrollbar()
-                .border_1()
-                .border_color(gpui_kit::rgb(SIDEBAR_BACKGROUND))
-                .child(chart),
-        );
         let mut legend = div().mt_3().flex().flex_wrap().gap_3();
         let mut seen_countries = BTreeMap::new();
         for entry in &entries {
@@ -971,7 +963,18 @@ impl App {
                 );
             }
         }
-        view = view.child(legend);
+        view = view.child(
+            div()
+                .mt_6()
+                .w_full()
+                .h(chart_height)
+                .p_4()
+                .overflow_x_scrollbar()
+                .border_1()
+                .border_color(gpui_kit::rgb(SIDEBAR_BACKGROUND))
+                .child(chart)
+                .child(legend),
+        );
         view.into_any_element()
     }
 }
@@ -1000,7 +1003,7 @@ fn experience_entries(resume: &Resume, current: YearMonth) -> Vec<ExperienceEntr
             .start_date
             .as_deref()
             .and_then(|value| YearMonth::parse(&value[..7.min(value.len())]).ok());
-        let country = country_for_location(work.location.as_ref());
+        let country = experience_country(work);
         let entry = grouped
             .entry(company)
             .or_insert((0, country.clone(), start));
@@ -1021,7 +1024,14 @@ fn experience_entries(resume: &Resume, current: YearMonth) -> Vec<ExperienceEntr
     let colors = countries
         .into_iter()
         .enumerate()
-        .map(|(index, country)| (country, palette[index % palette.len()]))
+        .map(|(index, country)| {
+            let color = if country == "Unknown" {
+                UNKNOWN_COUNTRY_COLOR
+            } else {
+                palette[index % palette.len()]
+            };
+            (country, color)
+        })
         .collect::<BTreeMap<_, _>>();
 
     let mut entries = grouped
@@ -1043,6 +1053,18 @@ fn experience_entries(resume: &Resume, current: YearMonth) -> Vec<ExperienceEntr
             .then_with(|| left.company.cmp(&right.company))
     });
     entries
+}
+
+fn experience_country(work: &crate::resume::WorkEntry) -> String {
+    let location_country = country_for_location(work.location.as_ref());
+    if location_country != "Unknown" {
+        return location_country;
+    }
+    work.name
+        .rsplit_once(',')
+        .map(|(_, country)| country.trim().to_owned())
+        .filter(|country| !country.is_empty())
+        .unwrap_or_else(|| "Unknown".to_owned())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1076,14 +1098,14 @@ fn footer_attribution() -> AnyElement {
         .child(
             Link::new("footer-rust-link")
                 .href(FOOTER_RUST_URL)
-                .text_color(gpui_kit::rgb(0x2563eb))
+                .text_color(gpui_kit::rgb(DEFAULT_LINK_BLUE))
                 .child(selectable_text("footer-rust", "Rust")),
         )
         .child(selectable_text("footer-using-gpui-kit", "and"))
         .child(
             Link::new("footer-gpui-kit-link")
                 .href(FOOTER_GPUI_KIT_URL)
-                .text_color(gpui_kit::rgb(0x2563eb))
+                .text_color(gpui_kit::rgb(DEFAULT_LINK_BLUE))
                 .child(selectable_text("footer-gpui-kit", "gpui-kit")),
         )
         .into_any_element()
@@ -1167,7 +1189,8 @@ fn format_publication_date(value: Option<&str>) -> String {
 mod tests {
     use super::{
         experience_chart_layout, experience_entries, format_publication_date, profile_publications,
-        ExperienceChartLayout, FOOTER_GPUI_KIT_URL, FOOTER_RUST_URL,
+        ExperienceChartLayout, DEFAULT_LINK_BLUE, FOOTER_GPUI_KIT_URL, FOOTER_RUST_URL,
+        UNKNOWN_COUNTRY_COLOR,
     };
     use crate::resume::{Location, Publication, Resume, WorkEntry, YearMonth};
     use std::collections::BTreeMap;
@@ -1276,5 +1299,38 @@ mod tests {
         assert_eq!(entries[0].company, "Newer company");
         assert_eq!(entries[0].country, "India");
         assert_ne!(entries[0].color, entries[1].color);
+    }
+
+    #[test]
+    fn experience_entries_infer_country_from_company_name_and_keep_unknown_distinct() {
+        let resume = Resume {
+            work: vec![
+                WorkEntry {
+                    name: "Company, Berlin, Germany".to_owned(),
+                    start_date: Some("2020-01".to_owned()),
+                    end_date: Some("2021-01".to_owned()),
+                    ..Default::default()
+                },
+                WorkEntry {
+                    name: "Company without location".to_owned(),
+                    start_date: Some("2018-01".to_owned()),
+                    end_date: Some("2019-01".to_owned()),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let entries = experience_entries(&resume, YearMonth::parse("2024-12").unwrap());
+
+        assert_eq!(entries[0].country, "Germany");
+        assert_eq!(entries[1].country, "Unknown");
+        assert_eq!(entries[1].color, UNKNOWN_COUNTRY_COLOR);
+        assert_ne!(entries[0].color, entries[1].color);
+    }
+
+    #[test]
+    fn shared_links_use_default_blue() {
+        assert_eq!(DEFAULT_LINK_BLUE, 0x2563eb);
     }
 }
