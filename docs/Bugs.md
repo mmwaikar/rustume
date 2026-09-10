@@ -1,5 +1,12 @@
 # Bugs
 
+## 10-Sep-2026
+
+### Round 1 - Pre implementation review
+
+- Regression - The vertical bars don't look good because the company names are too big. If the name can't be made diagonal, then maybe we should keep the bar chart horizontal. Keep using the chart component - https://gpui-kit.com/component/chart/. Either show the company name in the bar, or do not stack the company name and the bar vertically (one below the other), but stacked horizontally (left to right)
+- The footer currently says "Built with Rust and GPUI" - I want it to say "Made with :heart-emoji: using Rust (with link https://rust-lang.org/) and gpui-kit (with link https://gpui-kit.com)"
+
 ## 9-Sep-2026
 
 ### Round 1 - Pre implementation review
@@ -48,4 +55,4 @@
     - the text "25+ years of ..." should wrap
     - it should show Education, Publications, Network and Languages in a GroupBox
 8. Why have you created your own badge function when there already is a Bubble control?
-9. Can the left sidebar be in a Dock control, so that it can be width-adjusted? 
+9. Can the left sidebar be in a Dock control, so that it can be width-adjusted?

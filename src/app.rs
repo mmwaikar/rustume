@@ -3,8 +3,10 @@ use crate::resume::{
     YearMonth,
 };
 use gpui_kit::base::SelectableText;
+use gpui_kit::component::plot::shape::BarAlignment;
 use gpui_kit::component::{
     bubble::{Bubble, BubbleVariant},
+    chart::BarChart,
     dock::{
         panel_handle, BasePanel, DockArea, DockLayout, DockPlacement, DockSkin, Panel as DockPanel,
         PanelEvent,
@@ -128,7 +130,8 @@ const SIDEBAR_BACKGROUND: u32 = 0xd7d8bd;
 const INK: u32 = 0x203a36;
 const MUTED_INK: u32 = 0x67735d;
 const ACTIVE: u32 = 0xefb15d;
-const ACCENT: u32 = 0xd96c3f;
+const FOOTER_RUST_URL: &str = "https://rust-lang.org/";
+const FOOTER_GPUI_KIT_URL: &str = "https://gpui-kit.com";
 
 fn nav_icon(name: &'static str) -> AnyElement {
     let icon = match name {
@@ -895,7 +898,6 @@ impl App {
 
     fn experience(&self) -> AnyElement {
         let totals = company_months(&self.resume, YearMonth::current()).unwrap_or_default();
-        let max = totals.values().copied().max().unwrap_or(1);
         let mut view = div().child(div().text_2xl().child(selectable_text(
             "experience-heading",
             "Experience by company",
@@ -909,63 +911,80 @@ impl App {
                 .into_any_element();
         }
 
-        let mut chart = div()
-            .mt_6()
-            .w_full()
-            .h(gpui_kit::px(380.0))
-            .p_4()
-            .flex()
-            .items_end()
-            .gap_4()
-            .overflow_x_scrollbar()
-            .border_1()
-            .border_color(gpui_kit::rgb(SIDEBAR_BACKGROUND));
-        for (company, months) in totals {
-            let bar_height = experience_bar_height(months, max);
-            chart = chart.child(
-                div()
-                    .w(gpui_kit::px(140.0))
-                    .h_full()
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .justify_end()
-                    .flex_none()
-                    .child(
-                        div()
-                            .h(gpui_kit::px(260.0))
-                            .flex()
-                            .flex_col()
-                            .items_center()
-                            .justify_end()
-                            .child(selectable_text(
-                                format!("experience-value-{company}"),
-                                format!("{months} months"),
-                            ))
-                            .child(
-                                div()
-                                    .w(gpui_kit::px(56.0))
-                                    .h(gpui_kit::px(bar_height as f32))
-                                    .rounded_lg()
-                                    .bg(gpui_kit::rgb(ACCENT)),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .mt_2()
-                            .w(gpui_kit::px(140.0))
-                            .text_center()
-                            .whitespace_normal()
-                            .child(selectable_text(
-                                format!("experience-company-{company}"),
-                                company,
-                            )),
-                    ),
-            );
-        }
-        view = view.child(chart);
+        let companies = totals.keys().cloned().collect::<Vec<_>>();
+        let layout = experience_chart_layout(&companies, 720);
+        let chart_data = totals
+            .into_iter()
+            .map(|(company, months)| (company, months as f64))
+            .collect::<Vec<_>>();
+        let chart_height = match layout {
+            ExperienceChartLayout::Horizontal => {
+                gpui_kit::px((chart_data.len() as f32 * 56.0 + 48.0).max(180.0))
+            }
+            ExperienceChartLayout::Vertical => gpui_kit::px(380.0),
+        };
+        let alignment = match layout {
+            ExperienceChartLayout::Horizontal => BarAlignment::Left,
+            ExperienceChartLayout::Vertical => BarAlignment::Bottom,
+        };
+        let chart = BarChart::new(chart_data)
+            .band(|(company, _)| company.clone())
+            .value(|(_, months)| *months)
+            .label(|(_, months)| format!("{months:.0} months"))
+            .alignment(alignment)
+            .corner_radii(gpui_kit::Corners::all(gpui_kit::px(8.0)))
+            .grid(false)
+            .value_axis(true);
+
+        view = view.child(
+            div()
+                .mt_6()
+                .w_full()
+                .h(chart_height)
+                .p_4()
+                .overflow_x_scrollbar()
+                .border_1()
+                .border_color(gpui_kit::rgb(SIDEBAR_BACKGROUND))
+                .child(chart),
+        );
         view.into_any_element()
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ExperienceChartLayout {
+    Horizontal,
+    Vertical,
+}
+
+fn experience_chart_layout(companies: &[String], available_width: u32) -> ExperienceChartLayout {
+    let longest_label = companies.iter().map(String::len).max().unwrap_or(0);
+    let estimated_width = companies.len() as u32 * 140;
+    if longest_label > 20 || estimated_width > available_width {
+        ExperienceChartLayout::Horizontal
+    } else {
+        ExperienceChartLayout::Vertical
+    }
+}
+
+fn footer_attribution() -> AnyElement {
+    div()
+        .flex()
+        .items_center()
+        .gap_1()
+        .child(selectable_text("footer-made-with", "Made with ❤️ using"))
+        .child(
+            Link::new("footer-rust-link")
+                .href(FOOTER_RUST_URL)
+                .child(selectable_text("footer-rust", "Rust")),
+        )
+        .child(selectable_text("footer-using-gpui-kit", "and"))
+        .child(
+            Link::new("footer-gpui-kit-link")
+                .href(FOOTER_GPUI_KIT_URL)
+                .child(selectable_text("footer-gpui-kit", "gpui-kit")),
+        )
+        .into_any_element()
 }
 
 impl Render for App {
@@ -1001,7 +1020,7 @@ impl Render for App {
             .child(
                 StatusBar::new()
                     .left(selectable_text("footer-name", "Rustume"))
-                    .right(selectable_text("footer-copy", "Built with Rust and GPUI")),
+                    .right(footer_attribution()),
             )
     }
 }
@@ -1042,13 +1061,12 @@ fn format_publication_date(value: Option<&str>) -> String {
     value.to_owned()
 }
 
-fn experience_bar_height(months: u32, maximum_months: u32) -> u32 {
-    48 + months * 220 / maximum_months.max(1)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{experience_bar_height, format_publication_date, profile_publications};
+    use super::{
+        experience_chart_layout, format_publication_date, profile_publications,
+        ExperienceChartLayout, FOOTER_GPUI_KIT_URL, FOOTER_RUST_URL,
+    };
     use crate::resume::{Publication, Resume};
 
     fn publication(publisher: &str) -> Publication {
@@ -1101,10 +1119,26 @@ mod tests {
     }
 
     #[test]
-    fn experience_bars_scale_from_a_common_baseline() {
-        assert_eq!(experience_bar_height(0, 12), 48);
-        assert_eq!(experience_bar_height(6, 12), 158);
-        assert_eq!(experience_bar_height(12, 12), 268);
-        assert_eq!(experience_bar_height(12, 0), 2688);
+    fn long_company_labels_use_horizontal_chart_layout() {
+        let companies = vec!["A company with a very long name".to_owned()];
+        assert_eq!(
+            experience_chart_layout(&companies, 720),
+            ExperienceChartLayout::Horizontal
+        );
+    }
+
+    #[test]
+    fn short_company_labels_can_use_vertical_chart_layout_when_wide_enough() {
+        let companies = vec!["Rustume".to_owned(), "GPUI".to_owned()];
+        assert_eq!(
+            experience_chart_layout(&companies, 720),
+            ExperienceChartLayout::Vertical
+        );
+    }
+
+    #[test]
+    fn footer_uses_official_project_urls() {
+        assert_eq!(FOOTER_RUST_URL, "https://rust-lang.org/");
+        assert_eq!(FOOTER_GPUI_KIT_URL, "https://gpui-kit.com");
     }
 }
