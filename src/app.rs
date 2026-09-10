@@ -1,6 +1,6 @@
 use crate::resume::{
-    company_months, geography_graph, skills_graph, wordpress_publications, Publication, Resume,
-    YearMonth,
+    country_for_location, geography_graph, skills_graph, wordpress_publications,
+    work_duration_months, Publication, Resume, YearMonth,
 };
 use gpui_kit::base::SelectableText;
 use gpui_kit::component::plot::shape::BarAlignment;
@@ -16,13 +16,14 @@ use gpui_kit::component::{
     scroll::ScrollableElement,
     status_bar::StatusBar,
     table::{Column, DataTable, TableDelegate, TableState},
-    Icon, IconName, Root,
+    Icon, Root,
 };
 use gpui_kit::{
     div, AnyElement, App as GpuiApp, AppContext, Context, Entity, EventEmitter, FocusHandle,
     Focusable, InteractiveElement, IntoElement, ParentElement, Render, StatefulInteractiveElement,
     Styled, Window,
 };
+use std::collections::BTreeMap;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Section {
@@ -134,16 +135,7 @@ const FOOTER_RUST_URL: &str = "https://rust-lang.org/";
 const FOOTER_GPUI_KIT_URL: &str = "https://gpui-kit.com";
 
 fn nav_icon(name: &'static str) -> AnyElement {
-    let icon = match name {
-        "book-open" => IconName::BookOpen,
-        "building-2" => IconName::Building2,
-        "chart-pie" => IconName::ChartPie,
-        "folder" => IconName::Folder,
-        "globe" => IconName::Globe,
-        "user" => IconName::User,
-        _ => IconName::TriangleAlert,
-    };
-    Icon::new(icon)
+    Icon::new(Icon::empty().path(format!("icons/{name}.svg")))
         .size_4()
         .text_color(gpui_kit::rgb(INK))
         .into_any_element()
@@ -182,7 +174,12 @@ fn compact_bubble(label: impl Into<String>) -> AnyElement {
         .flex_none()
         .ml_2()
         .text_xs()
-        .child(selectable_text(format!("compact-bubble-{label}"), label))
+        .child(
+            div()
+                .flex_none()
+                .whitespace_nowrap()
+                .child(selectable_text(format!("compact-bubble-{label}"), label)),
+        )
         .into_any_element()
 }
 
@@ -897,12 +894,12 @@ impl App {
     }
 
     fn experience(&self) -> AnyElement {
-        let totals = company_months(&self.resume, YearMonth::current()).unwrap_or_default();
+        let entries = experience_entries(&self.resume, YearMonth::current());
         let mut view = div().child(div().text_2xl().child(selectable_text(
             "experience-heading",
             "Experience by company",
         )));
-        if totals.is_empty() {
+        if entries.is_empty() {
             return view
                 .child(div().mt_6().child(selectable_text(
                     "experience-empty",
@@ -911,12 +908,12 @@ impl App {
                 .into_any_element();
         }
 
-        let companies = totals.keys().cloned().collect::<Vec<_>>();
-        let layout = experience_chart_layout(&companies, 720);
-        let chart_data = totals
-            .into_iter()
-            .map(|(company, months)| (company, months as f64))
+        let companies = entries
+            .iter()
+            .map(|entry| entry.company.clone())
             .collect::<Vec<_>>();
+        let layout = experience_chart_layout(&companies, 720);
+        let chart_data = entries.clone();
         let chart_height = match layout {
             ExperienceChartLayout::Horizontal => {
                 gpui_kit::px((chart_data.len() as f32 * 56.0 + 48.0).max(180.0))
@@ -928,9 +925,10 @@ impl App {
             ExperienceChartLayout::Vertical => BarAlignment::Bottom,
         };
         let chart = BarChart::new(chart_data)
-            .band(|(company, _)| company.clone())
-            .value(|(_, months)| *months)
-            .label(|(_, months)| format!("{months:.0} months"))
+            .band(|entry| entry.company.clone())
+            .value(|entry| entry.months)
+            .label(|entry| format!("{:.0} months", entry.months))
+            .fill(|entry, _, _, _| gpui_kit::rgb(entry.color))
             .alignment(alignment)
             .corner_radii(gpui_kit::Corners::all(gpui_kit::px(8.0)))
             .grid(false)
@@ -947,8 +945,104 @@ impl App {
                 .border_color(gpui_kit::rgb(SIDEBAR_BACKGROUND))
                 .child(chart),
         );
+        let mut legend = div().mt_3().flex().flex_wrap().gap_3();
+        let mut seen_countries = BTreeMap::new();
+        for entry in &entries {
+            if seen_countries
+                .insert(entry.country.clone(), entry.color)
+                .is_none()
+            {
+                legend = legend.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(
+                            div()
+                                .w_3()
+                                .h_3()
+                                .rounded_sm()
+                                .bg(gpui_kit::rgb(entry.color)),
+                        )
+                        .child(selectable_text(
+                            format!("experience-country-legend-{}", entry.country),
+                            entry.country.clone(),
+                        )),
+                );
+            }
+        }
+        view = view.child(legend);
         view.into_any_element()
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ExperienceEntry {
+    company: String,
+    months: f64,
+    country: String,
+    color: u32,
+    latest_start: Option<YearMonth>,
+}
+
+fn experience_entries(resume: &Resume, current: YearMonth) -> Vec<ExperienceEntry> {
+    let mut grouped = BTreeMap::<String, (u32, String, Option<YearMonth>)>::new();
+    for work in &resume.work {
+        let company = if work.name.is_empty() {
+            "Unknown company".to_owned()
+        } else {
+            work.name.clone()
+        };
+        let Ok(months) = work_duration_months(work, current) else {
+            continue;
+        };
+        let start = work
+            .start_date
+            .as_deref()
+            .and_then(|value| YearMonth::parse(&value[..7.min(value.len())]).ok());
+        let country = country_for_location(work.location.as_ref());
+        let entry = grouped
+            .entry(company)
+            .or_insert((0, country.clone(), start));
+        entry.0 += months;
+        if start > entry.2 {
+            entry.1 = country;
+            entry.2 = start;
+        }
+    }
+
+    let mut countries = grouped
+        .values()
+        .map(|(_, country, _)| country.clone())
+        .collect::<Vec<_>>();
+    countries.sort();
+    countries.dedup();
+    let palette = [0xd96c3f, 0x2f7f73, 0xd39b35, 0x5f6fb5, 0x9b5c83, 0x578b5b];
+    let colors = countries
+        .into_iter()
+        .enumerate()
+        .map(|(index, country)| (country, palette[index % palette.len()]))
+        .collect::<BTreeMap<_, _>>();
+
+    let mut entries = grouped
+        .into_iter()
+        .map(
+            |(company, (months, country, latest_start))| ExperienceEntry {
+                company,
+                months: months as f64,
+                color: colors[&country],
+                country,
+                latest_start,
+            },
+        )
+        .collect::<Vec<_>>();
+    entries.sort_by(|left, right| {
+        right
+            .latest_start
+            .cmp(&left.latest_start)
+            .then_with(|| left.company.cmp(&right.company))
+    });
+    entries
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -972,16 +1066,24 @@ fn footer_attribution() -> AnyElement {
         .flex()
         .items_center()
         .gap_1()
-        .child(selectable_text("footer-made-with", "Made with ❤️ using"))
+        .child(selectable_text("footer-made-with", "Made with"))
+        .child(
+            Icon::new(Icon::empty().path("icons/heart.svg"))
+                .size_3()
+                .text_color(gpui_kit::rgb(0xdc2626)),
+        )
+        .child(selectable_text("footer-using", "using"))
         .child(
             Link::new("footer-rust-link")
                 .href(FOOTER_RUST_URL)
+                .text_color(gpui_kit::rgb(0x2563eb))
                 .child(selectable_text("footer-rust", "Rust")),
         )
         .child(selectable_text("footer-using-gpui-kit", "and"))
         .child(
             Link::new("footer-gpui-kit-link")
                 .href(FOOTER_GPUI_KIT_URL)
+                .text_color(gpui_kit::rgb(0x2563eb))
                 .child(selectable_text("footer-gpui-kit", "gpui-kit")),
         )
         .into_any_element()
@@ -1064,10 +1166,11 @@ fn format_publication_date(value: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        experience_chart_layout, format_publication_date, profile_publications,
+        experience_chart_layout, experience_entries, format_publication_date, profile_publications,
         ExperienceChartLayout, FOOTER_GPUI_KIT_URL, FOOTER_RUST_URL,
     };
-    use crate::resume::{Publication, Resume};
+    use crate::resume::{Location, Publication, Resume, WorkEntry, YearMonth};
+    use std::collections::BTreeMap;
 
     fn publication(publisher: &str) -> Publication {
         Publication {
@@ -1140,5 +1243,38 @@ mod tests {
     fn footer_uses_official_project_urls() {
         assert_eq!(FOOTER_RUST_URL, "https://rust-lang.org/");
         assert_eq!(FOOTER_GPUI_KIT_URL, "https://gpui-kit.com");
+    }
+
+    #[test]
+    fn experience_entries_sort_newest_first_and_color_countries() {
+        let resume = Resume {
+            work: vec![
+                WorkEntry {
+                    name: "Older company".to_owned(),
+                    start_date: Some("2018-01".to_owned()),
+                    end_date: Some("2020-01".to_owned()),
+                    location: Some(Location::Structured {
+                        country_code: Some("US".to_owned()),
+                        country: None,
+                        _other: BTreeMap::new(),
+                    }),
+                    ..Default::default()
+                },
+                WorkEntry {
+                    name: "Newer company".to_owned(),
+                    start_date: Some("2022-01".to_owned()),
+                    end_date: Some("2024-01".to_owned()),
+                    location: Some(Location::Text("India".to_owned())),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let entries = experience_entries(&resume, YearMonth::parse("2024-12").unwrap());
+
+        assert_eq!(entries[0].company, "Newer company");
+        assert_eq!(entries[0].country, "India");
+        assert_ne!(entries[0].color, entries[1].color);
     }
 }

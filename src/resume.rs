@@ -568,7 +568,7 @@ mod tests {
         assert!(!resume.languages.is_empty());
         assert!(!resume.interests.is_empty());
         assert!(!resume.projects.is_empty());
-        assert_eq!(wordpress_publications(&resume).len(), 4);
+        assert_eq!(wordpress_publications(&resume).len(), 5);
         assert!(has_network_profile(&resume));
     }
 }
