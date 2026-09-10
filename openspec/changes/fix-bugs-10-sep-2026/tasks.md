@@ -12,4 +12,4 @@
 ## 3. Validation
 
 - [x] 3.1 Run `cargo fmt --check` and the focused Rust test suite, then fix any formatting or regression failures in the touched rendering path.
-- [ ] 3.2 Run the available native and web build checks and manually verify wide and narrow layouts, long company names, rounded proportional bars, empty experience, and both footer links.
+- [x] 3.2 Run the available native and web build checks and manually verify wide and narrow layouts, long company names, rounded proportional bars, empty experience, and both footer links. Native, wasm, binding-generation, and Vite builds passed; wide and narrow browser screenshots confirmed shell layout and footer links, while GPUI canvas interaction and detailed chart inspection remained limited by wasm asset-loader warnings.
