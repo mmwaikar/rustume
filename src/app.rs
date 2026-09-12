@@ -1,6 +1,6 @@
 use crate::resume::{
     country_for_location, geography_graph, skills_graph, wordpress_publications,
-    work_duration_months, Publication, Resume, YearMonth,
+    work_duration_months, GraphNode, GraphPayload, Publication, Resume, YearMonth,
 };
 use gpui_kit::base::SelectableText;
 use gpui_kit::component::plot::shape::BarAlignment;
@@ -13,9 +13,11 @@ use gpui_kit::component::{
     },
     group_box::{GroupBox, GroupBoxVariants},
     link::Link,
+    list::ListItem,
     scroll::ScrollableElement,
     status_bar::StatusBar,
     table::{Column, DataTable, TableDelegate, TableState},
+    tree::{tree, TreeItem, TreeState},
     Icon, Root,
 };
 use gpui_kit::{
@@ -41,8 +43,8 @@ pub struct App {
     resume: Resume,
     education_table: Entity<TableState<EducationTableDelegate>>,
     publication_table: Entity<TableState<PublicationTableDelegate>>,
+    skill_tree: Entity<TreeState>,
     section: Section,
-    selected_skill: Option<usize>,
 }
 
 struct SidebarPanel {
@@ -113,13 +115,21 @@ impl Render for SidebarPanel {
 
 impl Render for ContentPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.app.update(cx, |app, cx| {
+        self.app.update(cx, |app, _| {
             div()
                 .id("content-scroll")
                 .size_full()
                 .min_h_0()
                 .overflow_y_scroll()
-                .child(div().p_6().child(app.content(cx)))
+                .child(
+                    div()
+                        .p_6()
+                        .flex()
+                        .flex_col()
+                        .size_full()
+                        .min_h_0()
+                        .child(app.content()),
+                )
                 .into_any_element()
         })
     }
@@ -141,6 +151,18 @@ fn nav_icon(name: &'static str) -> AnyElement {
         .size_4()
         .text_color(gpui_kit::rgb(INK))
         .into_any_element()
+}
+
+fn skill_tree_icon_name(is_folder: bool, is_expanded: bool) -> &'static str {
+    match (is_folder, is_expanded) {
+        (true, true) => "folder-open",
+        (true, false) => "folder-closed",
+        (false, _) => "file",
+    }
+}
+
+fn skill_tree_icon(is_folder: bool, is_expanded: bool) -> AnyElement {
+    nav_icon(skill_tree_icon_name(is_folder, is_expanded))
 }
 
 fn section_eyebrow(label: &'static str) -> AnyElement {
@@ -176,18 +198,54 @@ fn compact_bubble(label: impl Into<String>) -> AnyElement {
         .flex_none()
         .ml_2()
         .content(
-            BubbleContent::new()
-                .px_1()
-                .py_0()
-                .text_xs()
-                .child(
-                    div()
-                        .flex_none()
-                        .whitespace_nowrap()
-                        .child(selectable_text(format!("compact-bubble-{label}"), label)),
-                ),
+            BubbleContent::new().px_1().py_0().text_xs().child(
+                div()
+                    .flex_none()
+                    .whitespace_nowrap()
+                    .child(selectable_text(format!("compact-bubble-{label}"), label)),
+            ),
         )
         .into_any_element()
+}
+
+fn skill_tree_children(graph: &GraphPayload, skill_name: &str) -> Vec<GraphNode> {
+    let Some(parent_id) = graph
+        .nodes
+        .iter()
+        .find(|node| node.group == "skill" && node.label == skill_name)
+        .map(|node| node.id.as_str())
+    else {
+        return Vec::new();
+    };
+
+    graph
+        .edges
+        .iter()
+        .filter(|edge| edge.source == parent_id && edge.label.as_deref() == Some("sub-skill"))
+        .filter_map(|edge| graph.nodes.iter().find(|node| node.id == edge.target))
+        .cloned()
+        .collect()
+}
+
+fn skill_tree_items(resume: &Resume) -> Vec<TreeItem> {
+    let graph = skills_graph(resume);
+    resume
+        .skills
+        .iter()
+        .map(|skill| {
+            let children = skill_tree_children(&graph, &skill.name)
+                .into_iter()
+                .map(|child| TreeItem::new(child.id, child.label))
+                .collect::<Vec<_>>();
+            let parent = graph
+                .nodes
+                .iter()
+                .find(|node| node.group == "skill" && node.label == skill.name)
+                .expect("skills graph must contain every resume skill");
+            TreeItem::new(parent.id.clone(), parent.label.clone())
+                .children(children)
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug)]
@@ -426,13 +484,14 @@ impl App {
                 .col_movable(false)
                 .col_resizable(true)
         });
+        let skill_tree = cx.new(|cx| TreeState::new(cx).items(skill_tree_items(&resume)));
         Self {
             dock,
             resume,
             education_table,
             publication_table,
+            skill_tree,
             section: Section::Overview,
-            selected_skill: None,
         }
     }
 
@@ -497,7 +556,7 @@ impl App {
         sidebar
     }
 
-    fn content(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn content(&self) -> AnyElement {
         match self.section {
             Section::Overview => div()
                 .child(
@@ -511,7 +570,7 @@ impl App {
                 )))
                 .into_any_element(),
             Section::Experience => self.experience(),
-            Section::Skills => self.skills(cx),
+            Section::Skills => self.skills(),
             Section::Geography => {
                 let graph = geography_graph(&self.resume);
                 div()
@@ -546,9 +605,41 @@ impl App {
         }
     }
 
-    fn skills(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn skills(&self) -> AnyElement {
         let graph = skills_graph(&self.resume);
-        let mut view = div()
+        let skill_levels = self
+            .resume
+            .skills
+            .iter()
+            .map(|skill| (skill.name.clone(), skill.level.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let skills_tree = tree(&self.skill_tree, move |_, entry, _, _, _| {
+            let label = entry.item().label.to_string();
+            let mut content = div()
+                .flex()
+                .items_center()
+                .gap_x_2()
+                .ml_2()
+                .child(skill_tree_icon(entry.is_folder(), entry.is_expanded()))
+                .child(selectable_text(
+                    format!("skill-tree-{}", entry.item().id),
+                    label.clone(),
+                ));
+            if entry.depth() > 0 {
+                content = content.ml_4();
+            }
+            if entry.is_root() {
+                if let Some(level) = skill_levels.get(&label).filter(|level| !level.is_empty()) {
+                    content = content.child(compact_bubble(level.clone()));
+                }
+            }
+            ListItem::new(entry.item().id.clone()).child(content)
+        });
+        div()
+            .flex()
+            .flex_col()
+            .size_full()
+            .min_h_0()
             .child(hero(
                 "SKILLS",
                 "Technical strengths",
@@ -561,58 +652,15 @@ impl App {
                     graph.nodes.len(),
                     graph.edges.len()
                 ),
-            )));
-        for (index, skill) in self.resume.skills.iter().enumerate() {
-            let selected = self.selected_skill == Some(index);
-            let header = div()
-                .flex()
-                .child(selectable_text(
-                    format!("skill-toggle-{index}"),
-                    if selected { "v " } else { "> " },
-                ))
-                .child(selectable_text(
-                    format!("skill-name-{index}"),
-                    skill.name.clone(),
-                ))
-                .child(compact_bubble(skill.level.clone()));
-            let mut row = div()
-                .id(format!("skill-{index}"))
-                .w_full()
-                .mb_1()
-                .px_4()
-                .py_3()
-                .bg(if selected {
-                    gpui_kit::rgb(ACTIVE)
-                } else {
-                    gpui_kit::rgb(PANEL_BACKGROUND)
-                })
-                .child(header)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.selected_skill = if this.selected_skill == Some(index) {
-                        None
-                    } else {
-                        Some(index)
-                    };
-                    cx.notify();
-                }));
-            if selected {
-                for (keyword_index, keyword) in skill.keywords.iter().enumerate() {
-                    row = row.child(
-                        div()
-                            .ml_6()
-                            .mt_2()
-                            .text_sm()
-                            .text_color(gpui_kit::rgb(MUTED_INK))
-                            .child(selectable_text(
-                                format!("skill-{index}-keyword-{keyword_index}"),
-                                keyword.clone(),
-                            )),
-                    );
-                }
-            }
-            view = view.child(row);
-        }
-        view.into_any_element()
+            )))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .child(skills_tree),
+            )
+            .into_any_element()
     }
 
     fn profile(&self) -> AnyElement {
@@ -1194,10 +1242,10 @@ fn format_publication_date(value: Option<&str>) -> String {
 mod tests {
     use super::{
         experience_chart_layout, experience_entries, format_publication_date, profile_publications,
-        ExperienceChartLayout, DEFAULT_LINK_BLUE, FOOTER_GPUI_KIT_URL, FOOTER_RUST_URL,
-        UNKNOWN_COUNTRY_COLOR,
+        skill_tree_children, skill_tree_icon_name, skill_tree_items, ExperienceChartLayout,
+        DEFAULT_LINK_BLUE, FOOTER_GPUI_KIT_URL, FOOTER_RUST_URL, UNKNOWN_COUNTRY_COLOR,
     };
-    use crate::resume::{Location, Publication, Resume, WorkEntry, YearMonth};
+    use crate::resume::{skills_graph, Location, Publication, Resume, Skill, WorkEntry, YearMonth};
     use std::collections::BTreeMap;
 
     fn publication(publisher: &str) -> Publication {
@@ -1337,5 +1385,43 @@ mod tests {
     #[test]
     fn shared_links_use_default_blue() {
         assert_eq!(DEFAULT_LINK_BLUE, 0x2563eb);
+    }
+
+    #[test]
+    fn skill_tree_children_remain_separate_and_case_normalized() {
+        let resume = Resume {
+            skills: vec![Skill {
+                name: "Rust".to_owned(),
+                keywords: vec![
+                    "Systems".to_owned(),
+                    "systems".to_owned(),
+                    "Async".to_owned(),
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let children = skill_tree_children(&skills_graph(&resume), "Rust");
+
+        assert_eq!(children.len(), 2);
+        assert!(children.iter().any(|child| child.label == "Systems"));
+        assert!(children.iter().any(|child| child.label == "Async"));
+
+        let tree = skill_tree_items(&resume);
+        assert_eq!(tree.len(), 1);
+        assert_eq!(tree[0].label, "Rust");
+        assert!(!tree[0].is_expanded());
+        assert_eq!(
+            tree[0]
+                .children
+                .iter()
+                .map(|child| child.label.to_string())
+                .collect::<Vec<_>>(),
+            vec!["Async", "Systems"]
+        );
+        assert_eq!(skill_tree_icon_name(true, false), "folder-closed");
+        assert_eq!(skill_tree_icon_name(true, true), "folder-open");
+        assert_eq!(skill_tree_icon_name(false, false), "file");
     }
 }

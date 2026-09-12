@@ -2,7 +2,23 @@
 
 ## 12-Sep-2026
 
-### Round 1 - - Pre implementation review
+### Round 3 - After AI implementation
+
+- the tree view does not show any icons for nodes - it should show open and closed folder icons for nodes and file icon (or a similar skill icon) for sub-skills
+- there also is no indentation in the tree nodes - the child nodes should be indented one level inside the main skill node
+- initially all the skill nodes should be collapsed
+- the tree view does not cover the remaining screen area, so it shows a scroll bar, it's height can be increased
+- the tree node icons are showing up after the text (i.e. to the right of the text), the icon should show up on the left and after that the text should appear
+- the icon and the node text are not aligned horizontally, the icon appears slightly higher than the node text
+- the tree view height does not occupy the remaining screen size
+- there should be some padding between the node icon and the text, right now, they are too close to each other
+
+### Round 2 - After AI implementation
+
+- why does the skill tree view have only 2 nodes per skill - one for the main skill and only one for all the sub-skills? I want one node for the skill, and one each for each sub-skill
+- have you used the gpui_kit::component::tree::tree for showing skills and sub-skills? if not please use it
+
+### Round 1 - Pre implementation review
 
 - Right now, all the bubbles are of the same size - the bubble in profile, language fluency, the skill level, project tags. However, the language fluency, skill level and project tags bubble should be smaller
 - the skill tree view, shows the sub-skills as a single child node of the main skill node, however each sub-skill should be a separate child node

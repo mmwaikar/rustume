@@ -559,9 +559,9 @@ mod tests {
             .filter(|edge| edge.label.as_deref() == Some("sub-skill"))
             .collect::<Vec<_>>();
         assert_eq!(sub_skill_edges.len(), 2);
-        assert!(sub_skill_edges.iter().all(|edge| {
-            edge.source == parent_id && child_ids.contains(&edge.target)
-        }));
+        assert!(sub_skill_edges
+            .iter()
+            .all(|edge| { edge.source == parent_id && child_ids.contains(&edge.target) }));
     }
 
     #[test]
