@@ -7,11 +7,27 @@ Make the candidate's named skills useful to inspect by exposing levels, keywords
 ## Requirements
 
 ### Requirement: Detailed skill groups
-The Skills view MUST show every named skill with its level when present and its complete keyword list. Skill levels MUST use the compact bubble presentation so they remain visually subordinate to the skill name.
+The Skills view MUST show every named skill with its level when present and its complete keyword list. Skill levels MUST use the compact bubble presentation so they remain visually subordinate to the skill name. The tree presentation MUST communicate parent and child hierarchy with node icons, one-level child indentation, collapsed initial branches, and a viewport that uses the available vertical content space.
 
 #### Scenario: Skill with level and keywords
 - **WHEN** a skill has a name, level, and keywords
 - **THEN** the view shows the name, level in a compact bubble, and readable keyword values
+
+#### Scenario: Skill node icons
+- **WHEN** a skill tree is displayed
+- **THEN** parent skill nodes show a closed-folder icon when collapsed and an open-folder icon when expanded, while sub-skill leaf nodes show a file-like or skill icon
+
+#### Scenario: Child hierarchy indentation
+- **WHEN** a skill has visible sub-skill children
+- **THEN** each child row is visibly indented one level inside its parent skill row
+
+#### Scenario: Collapsed initial state
+- **WHEN** the Skills view is opened
+- **THEN** all skill parent nodes are initially collapsed and sub-skills become visible only after expanding their parent
+
+#### Scenario: Full-height tree layout
+- **WHEN** the Skills view has more vertical space than its tree content requires
+- **THEN** the tree expands to use the available content height without introducing an avoidable short fixed-height scrollbar region
 
 ### Requirement: Isolated skills remain visible
 Skills with no keywords or no inferred relationship MUST remain visible as standalone skill entries.
