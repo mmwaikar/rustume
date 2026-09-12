@@ -1,5 +1,12 @@
 # Bugs
 
+## 12-Sep-2026
+
+### Round 1 - - Pre implementation review
+
+- Right now, all the bubbles are of the same size - the bubble in profile, language fluency, the skill level, project tags. However, the language fluency, skill level and project tags bubble should be smaller
+- the skill tree view, shows the sub-skills as a single child node of the main skill node, however each sub-skill should be a separate child node
+
 ## 10-Sep-2026
 
 ### Round 3 - After one more AI implementation

@@ -548,14 +548,20 @@ mod tests {
         assert_eq!(children.len(), 2);
         assert!(children.iter().any(|node| node.label == "Systems"));
         assert!(children.iter().any(|node| node.label == "Async"));
-        assert_eq!(
-            graph
-                .edges
-                .iter()
-                .filter(|edge| edge.label.as_deref() == Some("sub-skill"))
-                .count(),
-            2
-        );
+        let parent_id = graph_id("skill", "Rust");
+        let child_ids = children
+            .iter()
+            .map(|node| node.id.clone())
+            .collect::<BTreeSet<_>>();
+        let sub_skill_edges = graph
+            .edges
+            .iter()
+            .filter(|edge| edge.label.as_deref() == Some("sub-skill"))
+            .collect::<Vec<_>>();
+        assert_eq!(sub_skill_edges.len(), 2);
+        assert!(sub_skill_edges.iter().all(|edge| {
+            edge.source == parent_id && child_ids.contains(&edge.target)
+        }));
     }
 
     #[test]

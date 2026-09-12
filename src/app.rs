@@ -5,7 +5,7 @@ use crate::resume::{
 use gpui_kit::base::SelectableText;
 use gpui_kit::component::plot::shape::BarAlignment;
 use gpui_kit::component::{
-    bubble::{Bubble, BubbleVariant},
+    bubble::{Bubble, BubbleContent, BubbleVariant},
     chart::BarChart,
     dock::{
         panel_handle, BasePanel, DockArea, DockLayout, DockPlacement, DockSkin, Panel as DockPanel,
@@ -175,12 +175,17 @@ fn compact_bubble(label: impl Into<String>) -> AnyElement {
         .with_variant(BubbleVariant::Tinted)
         .flex_none()
         .ml_2()
-        .text_xs()
-        .child(
-            div()
-                .flex_none()
-                .whitespace_nowrap()
-                .child(selectable_text(format!("compact-bubble-{label}"), label)),
+        .content(
+            BubbleContent::new()
+                .px_1()
+                .py_0()
+                .text_xs()
+                .child(
+                    div()
+                        .flex_none()
+                        .whitespace_nowrap()
+                        .child(selectable_text(format!("compact-bubble-{label}"), label)),
+                ),
         )
         .into_any_element()
 }
@@ -811,7 +816,7 @@ impl App {
         for (index, item) in self.resume.projects.iter().enumerate() {
             let mut highlights = div().flex().flex_wrap();
             for highlight in &item.highlights {
-                highlights = highlights.child(bubble(highlight.clone()));
+                highlights = highlights.child(compact_bubble(highlight.clone()));
             }
             grid = grid.child(card(
                 div()
