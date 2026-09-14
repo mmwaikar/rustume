@@ -282,6 +282,18 @@ pub fn country_for_location(location: Option<&Location>) -> String {
     candidate.to_owned()
 }
 
+pub fn country_for_work(work: &WorkEntry) -> String {
+    let location_country = country_for_location(work.location.as_ref());
+    if location_country != "Unknown" {
+        return location_country;
+    }
+    work.name
+        .rsplit_once(',')
+        .map(|(_, country)| country.trim().to_owned())
+        .filter(|country| !country.is_empty())
+        .unwrap_or_else(|| "Unknown".to_owned())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GraphNode {
     pub id: String,
@@ -317,7 +329,7 @@ pub fn geography_graph(resume: &Resume) -> GraphPayload {
         } else {
             &work.name
         };
-        let country = country_for_location(work.location.as_ref());
+        let country = country_for_work(work);
         let company_id = graph_id("company", company);
         let country_id = graph_id("country", &country);
         nodes.entry(company_id.clone()).or_insert(GraphNode {
@@ -522,6 +534,24 @@ mod tests {
             .iter()
             .any(|node| node.id == edge.source)
             && skills.nodes.iter().any(|node| node.id == edge.target)));
+    }
+
+    #[test]
+    fn geography_graph_infers_country_from_company_name_when_location_is_missing() {
+        let resume = Resume {
+            work: vec![WorkEntry {
+                name: "Example Company, Berlin, Germany".to_owned(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let graph = geography_graph(&resume);
+
+        assert!(graph
+            .nodes
+            .iter()
+            .any(|node| node.group == "country" && node.label == "Germany"));
     }
 
     #[test]

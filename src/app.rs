@@ -1,6 +1,6 @@
 use crate::resume::{
-    country_for_location, geography_graph, skills_graph, wordpress_publications,
-    work_duration_months, GraphNode, GraphPayload, Publication, Resume, YearMonth,
+    country_for_work, geography_graph, skills_graph, wordpress_publications,
+    work_duration_months, GraphEdge, GraphNode, GraphPayload, Publication, Resume, YearMonth,
 };
 use gpui_kit::base::SelectableText;
 use gpui_kit::component::plot::shape::BarAlignment;
@@ -25,7 +25,7 @@ use gpui_kit::{
     Focusable, InteractiveElement, IntoElement, ParentElement, Render, StatefulInteractiveElement,
     Styled, Window,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Section {
@@ -44,6 +44,7 @@ pub struct App {
     education_table: Entity<TableState<EducationTableDelegate>>,
     publication_table: Entity<TableState<PublicationTableDelegate>>,
     skill_tree: Entity<TreeState>,
+    expanded_countries: BTreeSet<String>,
     section: Section,
 }
 
@@ -115,7 +116,7 @@ impl Render for SidebarPanel {
 
 impl Render for ContentPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.app.update(cx, |app, _| {
+        self.app.update(cx, |app, cx| {
             div()
                 .id("content-scroll")
                 .size_full()
@@ -128,7 +129,7 @@ impl Render for ContentPanel {
                         .flex_col()
                         .size_full()
                         .min_h_0()
-                        .child(app.content()),
+                        .child(app.content(cx)),
                 )
                 .into_any_element()
         })
@@ -225,6 +226,61 @@ fn skill_tree_children(graph: &GraphPayload, skill_name: &str) -> Vec<GraphNode>
         .filter_map(|edge| graph.nodes.iter().find(|node| node.id == edge.target))
         .cloned()
         .collect()
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CountryGraphProjection {
+    countries: Vec<GraphNode>,
+    companies: Vec<GraphNode>,
+    edges: Vec<GraphEdge>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CountryGraphLayout {
+    Stacked,
+    Split,
+}
+
+fn country_graph_projection(
+    graph: &GraphPayload,
+    expanded_countries: &BTreeSet<String>,
+) -> CountryGraphProjection {
+    let countries = graph
+        .nodes
+        .iter()
+        .filter(|node| node.group == "country")
+        .cloned()
+        .collect::<Vec<_>>();
+    let edges = graph
+        .edges
+        .iter()
+        .filter(|edge| expanded_countries.contains(&edge.target))
+        .cloned()
+        .collect::<Vec<_>>();
+    let visible_companies = edges
+        .iter()
+        .map(|edge| edge.source.as_str())
+        .collect::<BTreeSet<_>>();
+    let companies = graph
+        .nodes
+        .iter()
+        .filter(|node| node.group == "company" && visible_companies.contains(node.id.as_str()))
+        .cloned()
+        .collect();
+
+    CountryGraphProjection {
+        countries,
+        companies,
+        edges,
+    }
+}
+
+fn country_graph_layout(longest_label: usize, available_width: u32) -> CountryGraphLayout {
+    if available_width >= 680 && longest_label <= 36 {
+        CountryGraphLayout::Split
+    } else {
+        CountryGraphLayout::Stacked
+    }
 }
 
 fn skill_tree_items(resume: &Resume) -> Vec<TreeItem> {
@@ -491,6 +547,7 @@ impl App {
             education_table,
             publication_table,
             skill_tree,
+            expanded_countries: BTreeSet::new(),
             section: Section::Overview,
         }
     }
@@ -556,7 +613,7 @@ impl App {
         sidebar
     }
 
-    fn content(&self) -> AnyElement {
+    fn content(&self, cx: &mut Context<Self>) -> AnyElement {
         match self.section {
             Section::Overview => div()
                 .child(
@@ -571,38 +628,135 @@ impl App {
                 .into_any_element(),
             Section::Experience => self.experience(),
             Section::Skills => self.skills(),
-            Section::Geography => {
-                let graph = geography_graph(&self.resume);
-                div()
-                    .child(div().text_2xl().child(selectable_text(
-                        "geography-heading",
-                        "Experience by country",
-                    )))
-                    .child(div().mt_4().child(selectable_text(
-                        "geography-summary",
-                        format!(
-                            "{} companies and countries | {} relationships",
-                            graph.nodes.len(),
-                            graph.edges.len()
-                        ),
-                    )))
-                    .child(
-                        div().mt_4().child(selectable_text(
-                            "geography-nodes",
-                            graph
-                                .nodes
-                                .into_iter()
-                                .map(|node| node.label)
-                                .collect::<Vec<_>>()
-                                .join("  *  "),
-                        )),
-                    )
-                    .into_any_element()
-            }
+            Section::Geography => self.geography(cx),
             Section::Profile => self.profile(),
             Section::Projects => self.projects(),
             Section::BlogPosts => self.blog_posts(),
         }
+    }
+
+    fn geography(&self, cx: &mut Context<Self>) -> AnyElement {
+        let graph = geography_graph(&self.resume);
+        let projection = country_graph_projection(&graph, &self.expanded_countries);
+        let mut view = div()
+            .child(div().text_2xl().child(selectable_text(
+                "geography-heading",
+                "Experience by country",
+            )))
+            .child(div().mt_2().text_color(gpui_kit::rgb(MUTED_INK)).child(
+                selectable_text(
+                    "geography-summary",
+                    "Select a country to reveal the companies connected to it.",
+                ),
+            ));
+
+        if projection.countries.is_empty() {
+            return view
+                .child(div().mt_6().child(selectable_text(
+                    "geography-empty",
+                    "No work history is available to group by country.",
+                )))
+                .into_any_element();
+        }
+
+        let longest_label = projection
+            .countries
+            .iter()
+            .chain(projection.companies.iter())
+            .map(|node| node.label.len())
+            .max()
+            .unwrap_or_default();
+        let layout = country_graph_layout(longest_label, 720);
+        let mut countries = div().flex_1().min_w(gpui_kit::px(220.0));
+        for country in &projection.countries {
+            let country_id = country.id.clone();
+            let expanded = self.expanded_countries.contains(&country_id);
+            let company_count = graph
+                .edges
+                .iter()
+                .filter(|edge| edge.target == country_id)
+                .count();
+            countries = countries.child(
+                div()
+                    .id(format!("country-node-{}", country.id))
+                    .w_full()
+                    .mb_3()
+                    .p_4()
+                    .bg(gpui_kit::rgb(if expanded { ACTIVE } else { SIDEBAR_BACKGROUND }))
+                    .border_1()
+                    .border_color(gpui_kit::rgb(INK))
+                    .rounded_lg()
+                    .text_color(gpui_kit::rgb(INK))
+                    .child(div().flex().items_center().justify_between().child(
+                        selectable_text(
+                            format!("country-label-{}", country.id),
+                            country.label.clone(),
+                        ),
+                    ).child(selectable_text(
+                        format!("country-count-{}", country.id),
+                        format!("{} {company_count}", if expanded { "Hide" } else { "Show" }),
+                    )))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if !this.expanded_countries.insert(country_id.clone()) {
+                            this.expanded_countries.remove(&country_id);
+                        }
+                        cx.notify();
+                    })),
+            );
+        }
+
+        let mut companies = div().flex_1().min_w(gpui_kit::px(260.0));
+        if projection.companies.is_empty() {
+            companies = companies.child(div().mt_2().text_color(gpui_kit::rgb(MUTED_INK)).child(
+                selectable_text("geography-companies-empty", "Choose a country to view its companies."),
+            ));
+        } else {
+            for edge in &projection.edges {
+                let company = projection
+                    .companies
+                    .iter()
+                    .find(|company| company.id == edge.source)
+                    .expect("projected edge must have a visible company");
+                let country = projection
+                    .countries
+                    .iter()
+                    .find(|country| country.id == edge.target)
+                    .expect("projected edge must have a country");
+                companies = companies.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .mb_3()
+                        .child(div().w_8().h_1().bg(gpui_kit::rgb(ACTIVE)))
+                        .child(
+                            div()
+                                .flex_1()
+                                .p_4()
+                                .bg(gpui_kit::rgb(PANEL_BACKGROUND))
+                                .border_1()
+                                .border_color(gpui_kit::rgb(SIDEBAR_BACKGROUND))
+                                .rounded_lg()
+                                .child(selectable_text(
+                                    format!("company-label-{}", company.id),
+                                    company.label.clone(),
+                                ))
+                                .child(div().mt_1().text_sm().text_color(gpui_kit::rgb(MUTED_INK)).child(
+                                    selectable_text(
+                                        format!("company-country-{}", company.id),
+                                        country.label.clone(),
+                                    ),
+                                )),
+                        ),
+                );
+            }
+        }
+
+        let graph_view = match layout {
+            CountryGraphLayout::Split => div().flex().flex_wrap().gap_6().child(countries).child(companies),
+            CountryGraphLayout::Stacked => div().flex().flex_col().gap_4().child(countries).child(companies),
+        };
+        view = view.child(div().mt_6().p_4().bg(gpui_kit::rgb(0xe7e8d2)).rounded_lg().child(graph_view));
+        view.into_any_element()
     }
 
     fn skills(&self) -> AnyElement {
@@ -1056,7 +1210,7 @@ fn experience_entries(resume: &Resume, current: YearMonth) -> Vec<ExperienceEntr
             .start_date
             .as_deref()
             .and_then(|value| YearMonth::parse(&value[..7.min(value.len())]).ok());
-        let country = experience_country(work);
+        let country = country_for_work(work);
         let entry = grouped
             .entry(company)
             .or_insert((0, country.clone(), start));
@@ -1106,18 +1260,6 @@ fn experience_entries(resume: &Resume, current: YearMonth) -> Vec<ExperienceEntr
             .then_with(|| left.company.cmp(&right.company))
     });
     entries
-}
-
-fn experience_country(work: &crate::resume::WorkEntry) -> String {
-    let location_country = country_for_location(work.location.as_ref());
-    if location_country != "Unknown" {
-        return location_country;
-    }
-    work.name
-        .rsplit_once(',')
-        .map(|(_, country)| country.trim().to_owned())
-        .filter(|country| !country.is_empty())
-        .unwrap_or_else(|| "Unknown".to_owned())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1241,12 +1383,15 @@ fn format_publication_date(value: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        experience_chart_layout, experience_entries, format_publication_date, profile_publications,
-        skill_tree_children, skill_tree_icon_name, skill_tree_items, ExperienceChartLayout,
-        DEFAULT_LINK_BLUE, FOOTER_GPUI_KIT_URL, FOOTER_RUST_URL, UNKNOWN_COUNTRY_COLOR,
+        country_graph_layout, country_graph_projection, experience_chart_layout, experience_entries,
+        format_publication_date, profile_publications, skill_tree_children, skill_tree_icon_name,
+        skill_tree_items, CountryGraphLayout, ExperienceChartLayout, DEFAULT_LINK_BLUE,
+        FOOTER_GPUI_KIT_URL, FOOTER_RUST_URL, UNKNOWN_COUNTRY_COLOR,
     };
-    use crate::resume::{skills_graph, Location, Publication, Resume, Skill, WorkEntry, YearMonth};
-    use std::collections::BTreeMap;
+    use crate::resume::{
+        geography_graph, skills_graph, Location, Publication, Resume, Skill, WorkEntry, YearMonth,
+    };
+    use std::collections::{BTreeMap, BTreeSet};
 
     fn publication(publisher: &str) -> Publication {
         Publication {
@@ -1385,6 +1530,64 @@ mod tests {
     #[test]
     fn shared_links_use_default_blue() {
         assert_eq!(DEFAULT_LINK_BLUE, 0x2563eb);
+    }
+
+    #[test]
+    fn country_graph_projection_keeps_countries_and_reveals_expanded_companies() {
+        let resume = Resume {
+            work: vec![
+                WorkEntry {
+                    name: "London company".to_owned(),
+                    location: Some(Location::Text("London, United Kingdom".to_owned())),
+                    ..Default::default()
+                },
+                WorkEntry {
+                    name: "Unlocated company".to_owned(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let graph = geography_graph(&resume);
+        let empty = country_graph_projection(&graph, &BTreeSet::new());
+
+        assert_eq!(empty.countries.len(), 2);
+        assert!(empty.countries.iter().any(|node| node.label == "Unknown"));
+        assert!(empty.companies.is_empty());
+        assert!(empty.edges.is_empty());
+
+        let expanded = BTreeSet::from(["country:united-kingdom".to_owned()]);
+        let projection = country_graph_projection(&graph, &expanded);
+
+        assert_eq!(projection.companies.len(), 1);
+        assert_eq!(projection.companies[0].label, "London company");
+        assert_eq!(projection.edges.len(), 1);
+        assert_eq!(projection.edges[0].target, "country:united-kingdom");
+    }
+
+    #[test]
+    fn country_graph_layout_preserves_readability_at_wide_and_narrow_widths() {
+        assert_eq!(
+            country_graph_layout(18, 900),
+            CountryGraphLayout::Split
+        );
+        assert_eq!(
+            country_graph_layout(18, 420),
+            CountryGraphLayout::Stacked
+        );
+        assert_eq!(
+            country_graph_layout(48, 900),
+            CountryGraphLayout::Stacked
+        );
+    }
+
+    #[test]
+    fn country_graph_projection_is_empty_when_work_history_is_empty() {
+        let projection = country_graph_projection(&geography_graph(&Resume::default()), &BTreeSet::new());
+
+        assert!(projection.countries.is_empty());
+        assert!(projection.companies.is_empty());
+        assert!(projection.edges.is_empty());
     }
 
     #[test]

@@ -22,16 +22,30 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-05-11
+          targets: wasm32-unknown-unknown
 
-      - name: Build placeholder
+      - name: Install wasm-bindgen
+        run: cargo install wasm-bindgen-cli --version 0.2.126 --locked
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build web application
         run: |
-          echo "Rustume Pages workflow scaffolded. Replace this step with the final Leptos build command."
+          cargo build --lib --target wasm32-unknown-unknown --release
+          wasm-bindgen --target web --out-dir web/wasm target/wasm32-unknown-unknown/release/rustume.wasm
+          npm install --prefix web
+          npm run build --prefix web
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./docs
+          path: ./web/dist
 
   deploy:
     needs: build
