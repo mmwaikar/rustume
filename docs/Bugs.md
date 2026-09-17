@@ -2,9 +2,14 @@
 
 ## 17-Sep-2026
 
-- OpenCode fixed the Geography graph to show edges between the nodes
-- OpenCode refactored the entire codebase into smaller modules
+### Using OpenCode
+
+- Fixed the Geography graph to show edges between the nodes
+- Refactored the entire codebase into smaller modules
 - The icons in the skills tree view are not visible in the web version, but they show up fine in the desktop version
+- Right now, the left sidebar has Experience and Geography as 2 different menu items, I want to group them under the Experience option. So Experience should have 2 sub items - (maybe) Companies and Geography, and the Skills should come after Experience
+- Also, choose another icons for Skills and Projects menu items
+- None of the right hand (main) sections are scrollable. So, for ex, the Languages section in the Profile section is not visible. Similarly, the last project in the Projects section is also not visible
 
 ## 12-Sep-2026
 

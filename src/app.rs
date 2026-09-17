@@ -40,6 +40,7 @@ pub struct App {
     publication_table: Entity<TableState<PublicationTableDelegate>>,
     skill_tree: Entity<TreeState>,
     expanded_countries: BTreeSet<String>,
+    experience_expanded: bool,
     section: Section,
 }
 
@@ -122,8 +123,7 @@ impl Render for ContentPanel {
                         .p_6()
                         .flex()
                         .flex_col()
-                        .size_full()
-                        .min_h_0()
+                        .min_h_full()
                         .child(app.content(cx)),
                 )
                 .into_any_element()
@@ -162,6 +162,7 @@ impl App {
             publication_table,
             skill_tree,
             expanded_countries: BTreeSet::new(),
+            experience_expanded: true,
             section: Section::Overview,
         }
     }
@@ -200,6 +201,82 @@ impl App {
             }))
     }
 
+    fn nav_group_button(
+        &self,
+        label: &'static str,
+        icon: &'static str,
+        active: bool,
+        expanded: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        div()
+            .id(label)
+            .w_full()
+            .px_3()
+            .py_3()
+            .mb_2()
+            .bg(if active {
+                gpui_kit::rgb(ACTIVE)
+            } else {
+                gpui_kit::rgb(0xe7e8d2)
+            })
+            .text_color(gpui_kit::rgb(INK))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(nav_icon(icon))
+                            .child(selectable_text(format!("nav-{label}"), label)),
+                    )
+                    .child(nav_icon(if expanded { "chevron-down" } else { "chevron-right" })),
+            )
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.experience_expanded = !this.experience_expanded;
+                cx.notify();
+            }))
+    }
+
+    fn nav_sub_button(
+        &self,
+        label: &'static str,
+        section: Section,
+        icon: &'static str,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let active = self.section == section;
+        div()
+            .id(label)
+            .w_full()
+            .px_3()
+            .py_2()
+            .mb_1()
+            .bg(if active {
+                gpui_kit::rgb(ACTIVE)
+            } else {
+                gpui_kit::rgb(0xd7d8bd)
+            })
+            .text_color(gpui_kit::rgb(INK))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(nav_icon(icon))
+                    .child(selectable_text(format!("nav-{label}"), label)),
+            )
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.section = section;
+                cx.notify();
+            }))
+    }
+
     fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let mut sidebar = div()
             .w_64()
@@ -207,11 +284,27 @@ impl App {
             .p_4()
             .bg(gpui_kit::rgb(SIDEBAR_BACKGROUND))
             .child(self.nav_button("Profile", Section::Profile, "user", cx))
-            .child(self.nav_button("Experience", Section::Experience, "building-2", cx))
-            .child(self.nav_button("Skills", Section::Skills, "chart-pie", cx))
-            .child(self.nav_button("Geography", Section::Geography, "globe", cx));
+            .child(self.nav_group_button(
+                "Experience",
+                "calendar",
+                matches!(self.section, Section::Experience | Section::Geography),
+                self.experience_expanded,
+                cx,
+            ));
+        if self.experience_expanded {
+            sidebar = sidebar
+                .child(self.nav_sub_button(
+                    "Companies",
+                    Section::Experience,
+                    "building-2",
+                    cx,
+                ))
+                .child(self.nav_sub_button("Geography", Section::Geography, "globe", cx));
+        }
+        sidebar = sidebar.child(self.nav_button("Skills", Section::Skills, "network", cx));
         if !self.resume.projects.is_empty() {
-            sidebar = sidebar.child(self.nav_button("Projects", Section::Projects, "folder", cx));
+            sidebar =
+                sidebar.child(self.nav_button("Projects", Section::Projects, "layout-dashboard", cx));
         }
         if !wordpress_publications(&self.resume).is_empty()
             || self
