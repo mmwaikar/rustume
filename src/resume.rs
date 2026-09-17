@@ -450,6 +450,14 @@ pub fn wordpress_publications(resume: &Resume) -> Vec<&Publication> {
         .collect()
 }
 
+pub fn profile_publications(resume: &Resume) -> Vec<&Publication> {
+    resume
+        .publications
+        .iter()
+        .filter(|publication| !publication.publisher.eq_ignore_ascii_case("wordpress"))
+        .collect()
+}
+
 pub fn has_network_profile(resume: &Resume) -> bool {
     resume
         .basics
@@ -538,6 +546,43 @@ mod tests {
             .iter()
             .any(|node| node.id == edge.source)
             && skills.nodes.iter().any(|node| node.id == edge.target)));
+    }
+
+    fn publication(publisher: &str) -> Publication {
+        Publication {
+            name: publisher.to_owned(),
+            publisher: publisher.to_owned(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn profile_publications_excludes_wordpress_entries_case_insensitively() {
+        let resume = Resume {
+            publications: vec![
+                publication("ACM"),
+                publication("WordPress"),
+                publication("wordpress"),
+            ],
+            ..Default::default()
+        };
+
+        let publications = profile_publications(&resume);
+
+        assert_eq!(publications.len(), 1);
+        assert_eq!(publications[0].publisher, "ACM");
+    }
+
+    #[test]
+    fn profile_publications_is_empty_for_blog_only_or_empty_input() {
+        let empty = Resume::default();
+        let blog_only = Resume {
+            publications: vec![publication("WordPress")],
+            ..Default::default()
+        };
+
+        assert!(profile_publications(&empty).is_empty());
+        assert!(profile_publications(&blog_only).is_empty());
     }
 
     #[test]
