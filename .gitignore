@@ -5,4 +5,5 @@ pkg/
 /dist/
 web/dist/
 web/wasm/
+web/public/
 .DS_Store

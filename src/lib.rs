@@ -22,11 +22,27 @@ thread_local! {
 }
 
 #[cfg(target_arch = "wasm32")]
+fn asset_endpoint() -> String {
+    let Some(window) = web_sys::window() else {
+        return String::new();
+    };
+    let location = window.location();
+    let origin = location.origin().unwrap_or_default();
+    let mut pathname = location.pathname().unwrap_or_default();
+    if let Some((_, last)) = pathname.rsplit_once('/') {
+        if !last.is_empty() {
+            pathname = pathname.trim_end_matches('/').to_owned();
+        }
+    }
+    format!("{}{}", origin, pathname.trim_end_matches('/'))
+}
+
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen::prelude::wasm_bindgen(start)]
 pub fn start_web() {
     gpui_kit::platform::web_init();
     let application = gpui_kit::application()
-        .with_assets(gpui_kit::assets::Assets::new(""))
+        .with_assets(gpui_kit::assets::Assets::new(asset_endpoint()))
         .run_embedded(|cx| {
             configure_application(cx);
             let options = gpui_kit::WindowOptions {

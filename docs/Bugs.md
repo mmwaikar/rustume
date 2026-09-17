@@ -1,5 +1,11 @@
 # Bugs
 
+## 17-Sep-2026
+
+- OpenCode fixed the Geography graph to show edges between the nodes
+- OpenCode refactored the entire codebase into smaller modules
+- The icons in the skills tree view are not visible in the web version, but they show up fine in the desktop version
+
 ## 12-Sep-2026
 
 ### Round 3 - After AI implementation
