@@ -1,6 +1,6 @@
 use crate::resume::{
     country_for_work, geography_graph, skills_graph, wordpress_publications,
-    work_duration_months, GraphEdge, GraphNode, GraphPayload, Publication, Resume, YearMonth,
+    work_duration_months, GraphNode, GraphPayload, Publication, Resume, YearMonth,
 };
 use gpui_kit::base::SelectableText;
 use gpui_kit::component::plot::shape::BarAlignment;
@@ -21,9 +21,9 @@ use gpui_kit::component::{
     Icon, Root,
 };
 use gpui_kit::{
-    div, AnyElement, App as GpuiApp, AppContext, Context, Entity, EventEmitter, FocusHandle,
-    Focusable, InteractiveElement, IntoElement, ParentElement, Render, StatefulInteractiveElement,
-    Styled, Window,
+    canvas, div, point, px, AnyElement, App as GpuiApp, AppContext, Context, Entity, EventEmitter,
+    FocusHandle, Focusable, InteractiveElement, IntoElement, ParentElement, PathBuilder, Pixels,
+    Point, Render, StatefulInteractiveElement, Styled, Window,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -228,58 +228,169 @@ fn skill_tree_children(graph: &GraphPayload, skill_name: &str) -> Vec<GraphNode>
         .collect()
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct CountryGraphProjection {
-    countries: Vec<GraphNode>,
-    companies: Vec<GraphNode>,
-    edges: Vec<GraphEdge>,
+const GRAPH_PADDING: f32 = 24.0;
+const GRAPH_COLUMN_GAP: f32 = 56.0;
+const GRAPH_ROW_GAP: f32 = 14.0;
+const COUNTRY_NODE_HEIGHT: f32 = 44.0;
+const COMPANY_NODE_HEIGHT: f32 = 36.0;
+const GRAPH_AVAILABLE_WIDTH: f32 = 720.0;
+
+#[derive(Clone, Debug, PartialEq)]
+struct GraphNodePosition {
+    id: String,
+    label: String,
+    group: String,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CountryGraphLayout {
-    Stacked,
-    Split,
+#[derive(Clone, Debug, PartialEq)]
+struct GraphEdgePath {
+    from_x: f32,
+    from_y: f32,
+    to_x: f32,
+    to_y: f32,
 }
 
-fn country_graph_projection(
+#[derive(Clone, Debug, PartialEq)]
+struct GraphLayout {
+    nodes: Vec<GraphNodePosition>,
+    edges: Vec<GraphEdgePath>,
+    container_width: f32,
+    container_height: f32,
+}
+
+fn graph_node_width(label: &str, min: f32, max: f32) -> f32 {
+    (min + label.chars().count() as f32 * 8.5).min(max)
+}
+
+fn display_company_name(name: &str) -> String {
+    match name.rsplit_once(',') {
+        None => name.trim().to_owned(),
+        Some((rest, _)) => match rest.trim().rsplit_once(',') {
+            None => rest.trim().to_owned(),
+            Some((rest, _)) => rest.trim().to_owned(),
+        },
+    }
+}
+
+fn country_company_counts(graph: &GraphPayload) -> BTreeMap<String, usize> {
+    graph
+        .edges
+        .iter()
+        .fold(BTreeMap::new(), |mut counts, edge| {
+            *counts.entry(edge.target.clone()).or_insert(0) += 1;
+            counts
+        })
+}
+
+fn compute_graph_layout(
     graph: &GraphPayload,
     expanded_countries: &BTreeSet<String>,
-) -> CountryGraphProjection {
+    available_width: f32,
+) -> GraphLayout {
     let countries = graph
         .nodes
         .iter()
         .filter(|node| node.group == "country")
         .cloned()
         .collect::<Vec<_>>();
-    let edges = graph
-        .edges
-        .iter()
-        .filter(|edge| expanded_countries.contains(&edge.target))
-        .cloned()
-        .collect::<Vec<_>>();
-    let visible_companies = edges
-        .iter()
-        .map(|edge| edge.source.as_str())
-        .collect::<BTreeSet<_>>();
-    let companies = graph
-        .nodes
-        .iter()
-        .filter(|node| node.group == "company" && visible_companies.contains(node.id.as_str()))
-        .cloned()
-        .collect();
+    if countries.is_empty() {
+        return GraphLayout {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            container_width: available_width,
+            container_height: 0.0,
+        };
+    }
 
-    CountryGraphProjection {
-        countries,
-        companies,
+    let country_widths = countries
+        .iter()
+        .map(|country| graph_node_width(&country.label, 140.0, 300.0))
+        .collect::<Vec<_>>();
+    let max_country_width = country_widths.iter().copied().fold(0.0, f32::max);
+    let company_column_x = GRAPH_PADDING + max_country_width + GRAPH_COLUMN_GAP;
+
+    let mut nodes = Vec::new();
+    let mut edges = Vec::new();
+    let mut y = GRAPH_PADDING;
+    let mut rightmost = company_column_x;
+
+    for (country, country_width) in countries.iter().zip(&country_widths) {
+        let country_y = y;
+        nodes.push(GraphNodePosition {
+            id: country.id.clone(),
+            label: country.label.clone(),
+            group: country.group.clone(),
+            x: GRAPH_PADDING,
+            y: country_y,
+            width: *country_width,
+            height: COUNTRY_NODE_HEIGHT,
+        });
+        y += COUNTRY_NODE_HEIGHT;
+
+        if expanded_countries.contains(&country.id) {
+            let companies = graph
+                .edges
+                .iter()
+                .filter(|edge| edge.target == country.id)
+                .filter_map(|edge| graph.nodes.iter().find(|node| node.id == edge.source).cloned())
+                .collect::<Vec<_>>();
+            if !companies.is_empty() {
+                y += GRAPH_ROW_GAP;
+            }
+            for company in &companies {
+                let label = display_company_name(&company.label);
+                let company_width = graph_node_width(&label, 180.0, 320.0);
+                rightmost = rightmost.max(company_column_x + company_width);
+                let company_y = y;
+                nodes.push(GraphNodePosition {
+                    id: company.id.clone(),
+                    label,
+                    group: company.group.clone(),
+                    x: company_column_x,
+                    y: company_y,
+                    width: company_width,
+                    height: COMPANY_NODE_HEIGHT,
+                });
+                edges.push(GraphEdgePath {
+                    from_x: company_column_x,
+                    from_y: company_y + COMPANY_NODE_HEIGHT / 2.0,
+                    to_x: GRAPH_PADDING + *country_width,
+                    to_y: country_y + COUNTRY_NODE_HEIGHT / 2.0,
+                });
+                y += COMPANY_NODE_HEIGHT + GRAPH_ROW_GAP;
+            }
+            if !companies.is_empty() {
+                y -= GRAPH_ROW_GAP;
+            }
+        }
+        y += GRAPH_ROW_GAP;
+    }
+
+    GraphLayout {
+        nodes,
         edges,
+        container_width: (rightmost + GRAPH_PADDING).max(available_width),
+        container_height: y + GRAPH_PADDING,
     }
 }
 
-fn country_graph_layout(longest_label: usize, available_width: u32) -> CountryGraphLayout {
-    if available_width >= 680 && longest_label <= 36 {
-        CountryGraphLayout::Split
-    } else {
-        CountryGraphLayout::Stacked
+fn paint_graph_edge(edge: &GraphEdgePath, origin: Point<Pixels>, window: &mut Window) {
+    let from = origin + point(px(edge.from_x), px(edge.from_y));
+    let to = origin + point(px(edge.to_x), px(edge.to_y));
+    let bend = ((edge.from_x - edge.to_x).abs() * 0.5).max(24.0);
+    let mut builder = PathBuilder::stroke(px(2.0));
+    builder.move_to(from);
+    builder.cubic_bezier_to(
+        to,
+        origin + point(px(edge.from_x - bend), px(edge.from_y)),
+        origin + point(px(edge.to_x + bend), px(edge.to_y)),
+    );
+    if let Ok(path) = builder.build() {
+        window.paint_path(path, gpui_kit::rgb(ACTIVE));
     }
 }
 
@@ -637,7 +748,6 @@ impl App {
 
     fn geography(&self, cx: &mut Context<Self>) -> AnyElement {
         let graph = geography_graph(&self.resume);
-        let projection = country_graph_projection(&graph, &self.expanded_countries);
         let mut view = div()
             .child(div().text_2xl().child(selectable_text(
                 "geography-heading",
@@ -650,7 +760,7 @@ impl App {
                 ),
             ));
 
-        if projection.countries.is_empty() {
+        if graph.nodes.iter().all(|node| node.group != "country") {
             return view
                 .child(div().mt_6().child(selectable_text(
                     "geography-empty",
@@ -659,103 +769,99 @@ impl App {
                 .into_any_element();
         }
 
-        let longest_label = projection
-            .countries
-            .iter()
-            .chain(projection.companies.iter())
-            .map(|node| node.label.len())
-            .max()
-            .unwrap_or_default();
-        let layout = country_graph_layout(longest_label, 720);
-        let mut countries = div().flex_1().min_w(gpui_kit::px(220.0));
-        for country in &projection.countries {
-            let country_id = country.id.clone();
-            let expanded = self.expanded_countries.contains(&country_id);
-            let company_count = graph
-                .edges
-                .iter()
-                .filter(|edge| edge.target == country_id)
-                .count();
-            countries = countries.child(
-                div()
-                    .id(format!("country-node-{}", country.id))
-                    .w_full()
-                    .mb_3()
-                    .p_4()
-                    .bg(gpui_kit::rgb(if expanded { ACTIVE } else { SIDEBAR_BACKGROUND }))
-                    .border_1()
-                    .border_color(gpui_kit::rgb(INK))
-                    .rounded_lg()
-                    .text_color(gpui_kit::rgb(INK))
-                    .child(div().flex().items_center().justify_between().child(
-                        selectable_text(
-                            format!("country-label-{}", country.id),
-                            country.label.clone(),
-                        ),
-                    ).child(selectable_text(
-                        format!("country-count-{}", country.id),
-                        format!("{} {company_count}", if expanded { "Hide" } else { "Show" }),
-                    )))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        if !this.expanded_countries.insert(country_id.clone()) {
-                            this.expanded_countries.remove(&country_id);
-                        }
-                        cx.notify();
-                    })),
-            );
-        }
+        let layout = compute_graph_layout(&graph, &self.expanded_countries, GRAPH_AVAILABLE_WIDTH);
+        let edges = layout.edges.clone();
+        let company_counts = country_company_counts(&graph);
 
-        let mut companies = div().flex_1().min_w(gpui_kit::px(260.0));
-        if projection.companies.is_empty() {
-            companies = companies.child(div().mt_2().text_color(gpui_kit::rgb(MUTED_INK)).child(
-                selectable_text("geography-companies-empty", "Choose a country to view its companies."),
-            ));
-        } else {
-            for edge in &projection.edges {
-                let company = projection
-                    .companies
-                    .iter()
-                    .find(|company| company.id == edge.source)
-                    .expect("projected edge must have a visible company");
-                let country = projection
-                    .countries
-                    .iter()
-                    .find(|country| country.id == edge.target)
-                    .expect("projected edge must have a country");
-                companies = companies.child(
+        let mut graph_container = div()
+            .id("geography-graph")
+            .relative()
+            .w_full()
+            .h(gpui_kit::px(layout.container_height))
+            .child(
+                canvas(
+                    move |_, _, _| edges.clone(),
+                    move |bounds, edges, window, _| {
+                        for edge in &edges {
+                            paint_graph_edge(edge, bounds.origin, window);
+                        }
+                    },
+                )
+                .absolute()
+                .inset_0(),
+            );
+
+        for node in &layout.nodes {
+            if node.group == "country" {
+                let expanded = self.expanded_countries.contains(&node.id);
+                let count = company_counts.get(&node.id).copied().unwrap_or_default();
+                let node_id = node.id.clone();
+                graph_container = graph_container.child(
                     div()
+                        .id(format!("country-node-{}", node.id))
+                        .absolute()
+                        .left(gpui_kit::px(node.x))
+                        .top(gpui_kit::px(node.y))
+                        .w(gpui_kit::px(node.width))
+                        .h(gpui_kit::px(node.height))
+                        .px_3()
                         .flex()
                         .items_center()
-                        .mb_3()
-                        .child(div().w_8().h_1().bg(gpui_kit::rgb(ACTIVE)))
-                        .child(
-                            div()
-                                .flex_1()
-                                .p_4()
-                                .bg(gpui_kit::rgb(PANEL_BACKGROUND))
-                                .border_1()
-                                .border_color(gpui_kit::rgb(SIDEBAR_BACKGROUND))
-                                .rounded_lg()
-                                .child(selectable_text(
-                                    format!("company-label-{}", company.id),
-                                    company.label.clone(),
-                                ))
-                                .child(div().mt_1().text_sm().text_color(gpui_kit::rgb(MUTED_INK)).child(
-                                    selectable_text(
-                                        format!("company-country-{}", company.id),
-                                        country.label.clone(),
-                                    ),
-                                )),
-                        ),
+                        .justify_between()
+                        .bg(gpui_kit::rgb(if expanded { ACTIVE } else { SIDEBAR_BACKGROUND }))
+                        .border_1()
+                        .border_color(gpui_kit::rgb(INK))
+                        .rounded_lg()
+                        .text_color(gpui_kit::rgb(INK))
+                        .child(selectable_text(
+                            format!("country-label-{}", node.id),
+                            node.label.clone(),
+                        ))
+                        .child(selectable_text(
+                            format!("country-toggle-{}", node.id),
+                            format!("{count} {}", if expanded { "hide" } else { "show" }),
+                        ))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if !this.expanded_countries.insert(node_id.clone()) {
+                                this.expanded_countries.remove(&node_id);
+                            }
+                            cx.notify();
+                        })),
+                );
+            } else {
+                graph_container = graph_container.child(
+                    div()
+                        .id(format!("company-node-{}", node.id))
+                        .absolute()
+                        .left(gpui_kit::px(node.x))
+                        .top(gpui_kit::px(node.y))
+                        .w(gpui_kit::px(node.width))
+                        .h(gpui_kit::px(node.height))
+                        .px_3()
+                        .flex()
+                        .items_center()
+                        .bg(gpui_kit::rgb(PANEL_BACKGROUND))
+                        .border_1()
+                        .border_color(gpui_kit::rgb(SIDEBAR_BACKGROUND))
+                        .rounded_lg()
+                        .text_color(gpui_kit::rgb(INK))
+                        .child(selectable_text(
+                            format!("company-label-{}", node.id),
+                            node.label.clone(),
+                        )),
                 );
             }
         }
 
-        let graph_view = match layout {
-            CountryGraphLayout::Split => div().flex().flex_wrap().gap_6().child(countries).child(companies),
-            CountryGraphLayout::Stacked => div().flex().flex_col().gap_4().child(countries).child(companies),
-        };
-        view = view.child(div().mt_6().p_4().bg(gpui_kit::rgb(0xe7e8d2)).rounded_lg().child(graph_view));
+        view = view.child(
+            div()
+                .mt_6()
+                .w_full()
+                .p_4()
+                .bg(gpui_kit::rgb(SIDEBAR_BACKGROUND))
+                .rounded_lg()
+                .child(graph_container),
+        );
         view.into_any_element()
     }
 
@@ -1383,10 +1489,11 @@ fn format_publication_date(value: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        country_graph_layout, country_graph_projection, experience_chart_layout, experience_entries,
-        format_publication_date, profile_publications, skill_tree_children, skill_tree_icon_name,
-        skill_tree_items, CountryGraphLayout, ExperienceChartLayout, DEFAULT_LINK_BLUE,
-        FOOTER_GPUI_KIT_URL, FOOTER_RUST_URL, UNKNOWN_COUNTRY_COLOR,
+        compute_graph_layout, country_company_counts, display_company_name, experience_chart_layout,
+        experience_entries, format_publication_date, graph_node_width, profile_publications,
+        skill_tree_children, skill_tree_icon_name, skill_tree_items, ExperienceChartLayout,
+        GraphNodePosition, COMPANY_NODE_HEIGHT, COUNTRY_NODE_HEIGHT, DEFAULT_LINK_BLUE,
+        FOOTER_GPUI_KIT_URL, FOOTER_RUST_URL, GRAPH_PADDING, UNKNOWN_COUNTRY_COLOR,
     };
     use crate::resume::{
         geography_graph, skills_graph, Location, Publication, Resume, Skill, WorkEntry, YearMonth,
@@ -1533,7 +1640,7 @@ mod tests {
     }
 
     #[test]
-    fn country_graph_projection_keeps_countries_and_reveals_expanded_companies() {
+    fn compute_graph_layout_places_countries_and_reveals_expanded_companies() {
         let resume = Resume {
             work: vec![
                 WorkEntry {
@@ -1549,45 +1656,183 @@ mod tests {
             ..Default::default()
         };
         let graph = geography_graph(&resume);
-        let empty = country_graph_projection(&graph, &BTreeSet::new());
+        let empty = compute_graph_layout(&graph, &BTreeSet::new(), 720.0);
 
-        assert_eq!(empty.countries.len(), 2);
-        assert!(empty.countries.iter().any(|node| node.label == "Unknown"));
-        assert!(empty.companies.is_empty());
+        assert_eq!(empty.nodes.len(), 2);
+        assert!(empty.nodes.iter().any(|node| node.group == "country"));
+        assert!(!empty.nodes.iter().any(|node| node.group == "company"));
         assert!(empty.edges.is_empty());
 
         let expanded = BTreeSet::from(["country:united-kingdom".to_owned()]);
-        let projection = country_graph_projection(&graph, &expanded);
+        let layout = compute_graph_layout(&graph, &expanded, 720.0);
 
-        assert_eq!(projection.companies.len(), 1);
-        assert_eq!(projection.companies[0].label, "London company");
-        assert_eq!(projection.edges.len(), 1);
-        assert_eq!(projection.edges[0].target, "country:united-kingdom");
+        let london = layout
+            .nodes
+            .iter()
+            .find(|node| node.label == "London company")
+            .expect("expanded company node exists");
+        assert_eq!(london.group, "company");
+        assert!(london.x > GRAPH_PADDING);
+        assert_eq!(layout.edges.len(), 1);
+        let edge = &layout.edges[0];
+        assert_eq!(edge.from_y, london.y + COMPANY_NODE_HEIGHT / 2.0);
+        assert_eq!(edge.to_x, GRAPH_PADDING + london_width(&layout));
     }
 
     #[test]
-    fn country_graph_layout_preserves_readability_at_wide_and_narrow_widths() {
-        assert_eq!(
-            country_graph_layout(18, 900),
-            CountryGraphLayout::Split
-        );
-        assert_eq!(
-            country_graph_layout(18, 420),
-            CountryGraphLayout::Stacked
-        );
-        assert_eq!(
-            country_graph_layout(48, 900),
-            CountryGraphLayout::Stacked
-        );
+    fn compute_graph_layout_collapses_companies_for_unexpanded_countries() {
+        let resume = Resume {
+            work: vec![
+                WorkEntry {
+                    name: "London company".to_owned(),
+                    location: Some(Location::Text("London, United Kingdom".to_owned())),
+                    ..Default::default()
+                },
+                WorkEntry {
+                    name: "Unlocated company".to_owned(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let graph = geography_graph(&resume);
+        let layout = compute_graph_layout(&graph, &BTreeSet::new(), 720.0);
+
+        assert!(layout.edges.is_empty());
+        assert!(!layout.nodes.iter().any(|node| node.group == "company"));
     }
 
     #[test]
-    fn country_graph_projection_is_empty_when_work_history_is_empty() {
-        let projection = country_graph_projection(&geography_graph(&Resume::default()), &BTreeSet::new());
+    fn graph_node_width_grows_with_label_length_and_clamps() {
+        let short = graph_node_width("DE", 140.0, 300.0);
+        let long = graph_node_width("A very long company name indeed", 180.0, 320.0);
+        assert_eq!(short, 157.0);
+        assert_eq!(long, 320.0);
+        assert!(graph_node_width("Germany", 140.0, 300.0) > short);
+    }
 
-        assert!(projection.countries.is_empty());
-        assert!(projection.companies.is_empty());
-        assert!(projection.edges.is_empty());
+    #[test]
+    fn display_company_name_strips_city_and_country_suffix() {
+        assert_eq!(
+            display_company_name("DKFZ (German Cancer Research Centre), Heidelberg, Germany"),
+            "DKFZ (German Cancer Research Centre)"
+        );
+        assert_eq!(
+            display_company_name("Redcats, New York, USA"),
+            "Redcats"
+        );
+        assert_eq!(
+            display_company_name("Company, Inc., New York, USA"),
+            "Company, Inc."
+        );
+        assert_eq!(display_company_name("Pune, India"), "Pune");
+        assert_eq!(display_company_name("Single Company"), "Single Company");
+        assert_eq!(display_company_name("Unknown company"), "Unknown company");
+    }
+
+    #[test]
+    fn country_company_counts_total_edges_per_country() {
+        let resume = Resume {
+            work: vec![
+                WorkEntry {
+                    name: "Company A".to_owned(),
+                    location: Some(Location::Text("London, United Kingdom".to_owned())),
+                    ..Default::default()
+                },
+                WorkEntry {
+                    name: "Company B".to_owned(),
+                    location: Some(Location::Text("London, United Kingdom".to_owned())),
+                    ..Default::default()
+                },
+                WorkEntry {
+                    name: "Company C".to_owned(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let graph = geography_graph(&resume);
+        let counts = country_company_counts(&graph);
+
+        assert_eq!(counts.get("country:united-kingdom"), Some(&2));
+        assert_eq!(counts.get("country:unknown"), Some(&1));
+    }
+
+    #[test]
+    fn graph_nodes_are_sorted_with_countries_first() {
+        let resume = Resume {
+            work: vec![
+                WorkEntry {
+                    name: "Company A".to_owned(),
+                    location: Some(Location::Text("London, United Kingdom".to_owned())),
+                    ..Default::default()
+                },
+                WorkEntry {
+                    name: "Company B".to_owned(),
+                    location: Some(Location::Text("Berlin, Germany".to_owned())),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let graph = geography_graph(&resume);
+        let layout = compute_graph_layout(&graph, &BTreeSet::new(), 720.0);
+
+        assert_eq!(
+            layout
+                .nodes
+                .iter()
+                .map(|node: &GraphNodePosition| node.group.as_str())
+                .collect::<Vec<_>>(),
+            vec!["country", "country"]
+        );
+        assert_eq!(layout.nodes[0].x, layout.nodes[1].x);
+        assert_eq!(layout.nodes[0].height, COUNTRY_NODE_HEIGHT);
+        assert!(layout.nodes[1].y > layout.nodes[0].y);
+    }
+
+    fn london_width(layout: &super::GraphLayout) -> f32 {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.label == "United Kingdom")
+            .map(|node| node.width)
+            .expect("country node width exists")
+    }
+
+    #[test]
+    fn graph_layout_container_height_clears_expanded_companies() {
+        let resume = Resume {
+            work: vec![
+                WorkEntry {
+                    name: "London company".to_owned(),
+                    location: Some(Location::Text("London, United Kingdom".to_owned())),
+                    ..Default::default()
+                },
+                WorkEntry {
+                    name: "Berlin company".to_owned(),
+                    location: Some(Location::Text("Berlin, Germany".to_owned())),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let graph = geography_graph(&resume);
+        let expanded = BTreeSet::from(["country:united-kingdom".to_owned()]);
+        let layout = compute_graph_layout(&graph, &expanded, 720.0);
+
+        let london = layout
+            .nodes
+            .iter()
+            .find(|node| node.label == "London company")
+            .expect("expanded company node exists");
+        assert!(london.y + COMPANY_NODE_HEIGHT <= layout.container_height);
+        let germany = layout
+            .nodes
+            .iter()
+            .find(|node| node.label == "Germany")
+            .expect("country node exists");
+        assert!(germany.y < london.y);
     }
 
     #[test]

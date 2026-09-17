@@ -323,6 +323,7 @@ fn graph_id(group: &str, label: &str) -> String {
 pub fn geography_graph(resume: &Resume) -> GraphPayload {
     let mut nodes = BTreeMap::new();
     let mut edges = Vec::new();
+    let mut seen_edges = BTreeSet::new();
     for work in &resume.work {
         let company = if work.name.is_empty() {
             "Unknown company"
@@ -342,12 +343,15 @@ pub fn geography_graph(resume: &Resume) -> GraphPayload {
             label: country,
             group: "country".to_owned(),
         });
-        edges.push(GraphEdge {
-            id: format!("{company_id}->{country_id}"),
-            source: company_id,
-            target: country_id,
-            label: None,
-        });
+        let edge_id = format!("{company_id}->{country_id}");
+        if seen_edges.insert(edge_id.clone()) {
+            edges.push(GraphEdge {
+                id: edge_id,
+                source: company_id,
+                target: country_id,
+                label: None,
+            });
+        }
     }
     GraphPayload {
         nodes: nodes.into_values().collect(),
@@ -552,6 +556,43 @@ mod tests {
             .nodes
             .iter()
             .any(|node| node.group == "country" && node.label == "Germany"));
+    }
+
+    #[test]
+    fn geography_graph_deduplicates_repeated_company_at_same_country() {
+        let resume = Resume {
+            work: vec![
+                WorkEntry {
+                    name: "SunGard Offshore Services, Pune, India".to_owned(),
+                    ..Default::default()
+                },
+                WorkEntry {
+                    name: "SunGard Offshore Services, Pune, India".to_owned(),
+                    ..Default::default()
+                },
+                WorkEntry {
+                    name: "Other Company, Pune, India".to_owned(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let graph = geography_graph(&resume);
+
+        let company_nodes = graph
+            .nodes
+            .iter()
+            .filter(|node| node.group == "company" && node.label.contains("SunGard"))
+            .count();
+        let sungard_edges = graph
+            .edges
+            .iter()
+            .filter(|edge| edge.label.is_none())
+            .filter(|edge| graph.nodes.iter().any(|n| n.id == edge.source && n.label.contains("SunGard")))
+            .count();
+        assert_eq!(company_nodes, 1);
+        assert_eq!(sungard_edges, 1);
     }
 
     #[test]
