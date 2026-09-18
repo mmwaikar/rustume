@@ -5,6 +5,7 @@
 ### Using OpenCode
 
 - the content is nicely scrollable, but no scroll bars appear, it would be nice to have scroll bars too
+- is it really difficult to improve geography graph by having Countries as the first collapsed node, which when clicked opens Germany, USA and India, and when any of them is clicked, the companies (belonging to that country) open up (exactly like a cytoscape.js visualization would behave)
 
 ## 17-Sep-2026
 

@@ -40,6 +40,7 @@ pub struct App {
     publication_table: Entity<TableState<PublicationTableDelegate>>,
     expanded_skills: BTreeSet<String>,
     expanded_countries: BTreeSet<String>,
+    geography_countries_expanded: bool,
     experience_expanded: bool,
     section: Section,
 }
@@ -179,6 +180,7 @@ impl App {
             publication_table,
             expanded_skills: BTreeSet::new(),
             expanded_countries: BTreeSet::new(),
+            geography_countries_expanded: false,
             experience_expanded: true,
             section: Section::Overview,
         }
