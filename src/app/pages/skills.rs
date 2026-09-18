@@ -1,9 +1,11 @@
 use crate::app::ui::{compact_bubble, hero, nav_icon, selectable_text};
 use crate::app::App;
 use crate::resume::{skills_graph, GraphNode, GraphPayload, Resume};
-use gpui_kit::component::{list::ListItem, tree::{tree, TreeItem}};
-use gpui_kit::{div, AnyElement, IntoElement, ParentElement, Styled};
-use std::collections::BTreeMap;
+use gpui_kit::component::list::ListItem;
+use gpui_kit::component::tree::TreeItem;
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::{div, AnyElement, Context, IntoElement, MouseButton, ParentElement, SharedString, Styled};
+use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) fn skill_tree_icon_name(is_folder: bool, is_expanded: bool) -> &'static str {
     match (is_folder, is_expanded) {
@@ -58,7 +60,7 @@ pub(crate) fn skill_tree_items(resume: &Resume) -> Vec<TreeItem> {
 }
 
 impl App {
-    pub(crate) fn skills(&self) -> AnyElement {
+    pub(crate) fn skills(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let graph = skills_graph(&self.resume);
         let skill_levels = self
             .resume
@@ -66,28 +68,47 @@ impl App {
             .iter()
             .map(|skill| (skill.name.clone(), skill.level.clone()))
             .collect::<BTreeMap<_, _>>();
-        let skills_tree = tree(&self.skill_tree, move |_, entry, _, _, _| {
-            let label = entry.item().label.to_string();
-            let mut content = div()
-                .flex()
-                .items_center()
-                .gap_x_2()
-                .ml_2()
-                .child(skill_tree_icon(entry.is_folder(), entry.is_expanded()))
-                .child(selectable_text(
-                    format!("skill-tree-{}", entry.item().id),
+        let expanded = self.expanded_skills.clone();
+        let mut rows = Vec::new();
+        for item in skill_tree_items(&self.resume) {
+            collect_skill_rows(&item, 0, &expanded, &mut rows);
+        }
+        let skills_tree = div()
+            .flex()
+            .flex_col()
+            .children(rows.into_iter().map(|(id, label, depth, is_folder, is_expanded)| {
+                let mut content = div()
+                    .flex()
+                    .items_center()
+                    .gap_x_2()
+                    .ml_2()
+                    .child(skill_tree_icon(is_folder, is_expanded));
+                if depth > 0 {
+                    content = content.ml_4();
+                }
+                content = content.child(selectable_text(
+                    format!("skill-tree-{}", id),
                     label.clone(),
                 ));
-            if entry.depth() > 0 {
-                content = content.ml_4();
-            }
-            if entry.is_root() {
-                if let Some(level) = skill_levels.get(&label).filter(|level| !level.is_empty()) {
-                    content = content.child(compact_bubble(level.clone()));
+                if depth == 0 {
+                    if let Some(level) = skill_levels.get(label.as_ref()).filter(|level| !level.is_empty()) {
+                        content = content.child(compact_bubble(level.clone()));
+                    }
                 }
-            }
-            ListItem::new(entry.item().id.clone()).child(content)
-        });
+                let toggle_id = id.clone();
+                ListItem::new(id)
+                    .child(content)
+                    .when(is_folder, |item| {
+                        item.on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                            if this.expanded_skills.contains(toggle_id.as_ref()) {
+                                this.expanded_skills.remove(toggle_id.as_ref());
+                            } else {
+                                this.expanded_skills.insert(toggle_id.to_string());
+                            }
+                            cx.notify();
+                        }))
+                    })
+            }));
         div()
             .flex()
             .flex_col()
@@ -108,12 +129,28 @@ impl App {
             )))
             .child(
                 div()
-                    .flex_1()
+                    .h(gpui_kit::px(560.0))
                     .min_h_0()
                     .w_full()
                     .child(skills_tree),
             )
             .into_any_element()
+    }
+}
+
+fn collect_skill_rows(
+    item: &TreeItem,
+    depth: usize,
+    expanded: &BTreeSet<String>,
+    out: &mut Vec<(SharedString, SharedString, usize, bool, bool)>,
+) {
+    let is_folder = item.is_folder();
+    let is_expanded = is_folder && expanded.contains(item.id.as_ref());
+    out.push((item.id.clone(), item.label.clone(), depth, is_folder, is_expanded));
+    if is_expanded {
+        for child in &item.children {
+            collect_skill_rows(child, depth + 1, expanded, out);
+        }
     }
 }
 

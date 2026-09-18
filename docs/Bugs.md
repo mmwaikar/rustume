@@ -1,5 +1,11 @@
 # Bugs
 
+## 18-Sep-2026
+
+### Using OpenCode
+
+- the content is nicely scrollable, but no scroll bars appear, it would be nice to have scroll bars too
+
 ## 17-Sep-2026
 
 ### Using OpenCode

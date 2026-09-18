@@ -1,4 +1,3 @@
-use crate::app::pages::skills::skill_tree_items;
 use crate::app::ui::{
     education_rows, nav_icon, publication_rows, selectable_text, EducationTableDelegate,
     PublicationTableDelegate, ACTIVE, DEFAULT_LINK_BLUE, FOOTER_GPUI_KIT_URL, FOOTER_RUST_URL, INK,
@@ -10,12 +9,13 @@ use gpui_kit::component::dock::{
     PanelEvent,
 };
 use gpui_kit::component::{
-    link::Link, status_bar::StatusBar, table::TableState, tree::TreeState, Icon, Root,
+    link::Link, scroll::{Scrollbar, ScrollbarMode}, status_bar::StatusBar, table::TableState,
+    Icon, Root,
 };
 use gpui_kit::{
     div, px, AnyElement, App as GpuiApp, AppContext, Context, Entity, EventEmitter, FocusHandle,
-    Focusable, InteractiveElement, IntoElement, ParentElement, Render, StatefulInteractiveElement,
-    Styled, Window,
+    Focusable, InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle,
+    StatefulInteractiveElement, Styled, Window,
 };
 use std::collections::BTreeSet;
 
@@ -38,7 +38,7 @@ pub struct App {
     resume: Resume,
     education_table: Entity<TableState<EducationTableDelegate>>,
     publication_table: Entity<TableState<PublicationTableDelegate>>,
-    skill_tree: Entity<TreeState>,
+    expanded_skills: BTreeSet<String>,
     expanded_countries: BTreeSet<String>,
     experience_expanded: bool,
     section: Section,
@@ -52,6 +52,7 @@ struct SidebarPanel {
 struct ContentPanel {
     app: Entity<App>,
     focus_handle: FocusHandle,
+    scroll_handle: ScrollHandle,
 }
 
 impl SidebarPanel {
@@ -68,6 +69,7 @@ impl ContentPanel {
         Self {
             app,
             focus_handle: cx.focus_handle(),
+            scroll_handle: ScrollHandle::default(),
         }
     }
 }
@@ -112,21 +114,37 @@ impl Render for SidebarPanel {
 
 impl Render for ContentPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let scroll_handle = self.scroll_handle.clone();
         self.app.update(cx, |app, cx| {
             div()
-                .id("content-scroll")
+                .relative()
                 .size_full()
                 .min_h_0()
-                .overflow_y_scroll()
                 .child(
                     div()
-                        .p_6()
-                        .flex()
-                        .flex_col()
-                        .min_h_full()
-                        .child(app.content(cx)),
+                        .id("content-scroll")
+                        .relative()
+                        .size_full()
+                        .min_h_0()
+                        .overflow_y_scroll()
+                        .track_scroll(&scroll_handle)
+                        .child(
+                            div()
+                                .p_6()
+                                .flex()
+                                .flex_col()
+                                .child(app.content(cx)),
+                        ),
                 )
-                .into_any_element()
+                .child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .bottom_0()
+                        .right_0()
+                        .w(gpui_kit::px(12.0))
+                        .child(Scrollbar::vertical(&scroll_handle).mode(ScrollbarMode::Scrolling)),
+                )
         })
     }
 }
@@ -154,13 +172,12 @@ impl App {
                 .col_movable(false)
                 .col_resizable(true)
         });
-        let skill_tree = cx.new(|cx| TreeState::new(cx).items(skill_tree_items(&resume)));
         Self {
             dock,
             resume,
             education_table,
             publication_table,
-            skill_tree,
+            expanded_skills: BTreeSet::new(),
             expanded_countries: BTreeSet::new(),
             experience_expanded: true,
             section: Section::Overview,
@@ -320,7 +337,7 @@ impl App {
         sidebar
     }
 
-    fn content(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn content(&mut self, cx: &mut Context<Self>) -> AnyElement {
         match self.section {
             Section::Overview => div()
                 .child(
@@ -334,7 +351,7 @@ impl App {
                 )))
                 .into_any_element(),
             Section::Experience => self.experience(),
-            Section::Skills => self.skills(),
+            Section::Skills => self.skills(cx),
             Section::Geography => self.geography(cx),
             Section::Profile => self.profile(),
             Section::Projects => self.projects(),
