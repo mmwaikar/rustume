@@ -508,6 +508,28 @@
   ],
   "projects": [
     {
+      "name": "rustume",
+      "description": "A Resume visualizer (web & desktop) in Rust",
+      "url": "https://github.com/mmwaikar/rustume",
+      "highlights": [
+        "Rust",
+        "gpui-kit",
+        "Web",
+        "Desktop"
+      ]
+    },
+    {
+      "name": "Compendium",
+      "description": "A Resume visualizer (web) using C# Blazor, Fluent UI Blazor, MudBlazor and Cytoscape.js",
+      "url": "https://github.com/mmwaikar/Compendium",
+      "highlights": [
+        "C# Blazor",
+        "Fluent UI Blazor",
+        "MudBlazor",
+        "Cytoscape.js"
+      ]
+    },
+    {
       "name": "dept-os",
       "description": "A department-standard desktop OS built on Fedora Kinoite (KDE Plasma + rpm-ostree) and sane defaults for developers",
       "url": "https://github.com/mmwaikar/dept-os",
