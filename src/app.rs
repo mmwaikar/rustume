@@ -10,7 +10,7 @@ use gpui_kit::component::dock::{
 };
 use gpui_kit::component::{
     link::Link, scroll::{Scrollbar, ScrollbarMode}, status_bar::StatusBar, table::TableState,
-    Icon, Root,
+    Root,
 };
 use gpui_kit::{
     div, px, AnyElement, App as GpuiApp, AppContext, Context, Entity, EventEmitter, FocusHandle,
@@ -369,9 +369,9 @@ fn footer_attribution() -> AnyElement {
         .gap_1()
         .child(selectable_text("footer-made-with", "Made with"))
         .child(
-            Icon::new(Icon::empty().path("icons/heart.svg"))
-                .size_3()
-                .text_color(gpui_kit::rgb(0xdc2626)),
+            div()
+                .text_color(gpui_kit::rgb(0xdc2626))
+                .child("\u{2665}"),
         )
         .child(selectable_text("footer-using", "using"))
         .child(
