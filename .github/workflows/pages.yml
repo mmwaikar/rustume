@@ -36,6 +36,8 @@ jobs:
           node-version: 22
 
       - name: Build web application
+        env:
+          RUSTUME_BASE_PATH: /rustume/
         run: |
           cargo build --lib --target wasm32-unknown-unknown --release
           wasm-bindgen --target web --out-dir web/wasm target/wasm32-unknown-unknown/release/rustume.wasm
