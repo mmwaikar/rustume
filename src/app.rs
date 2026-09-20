@@ -22,6 +22,8 @@ use std::collections::BTreeSet;
 mod pages;
 mod ui;
 
+const NARROW_BREAKPOINT: f32 = 768.0;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Section {
     Overview,
@@ -43,6 +45,7 @@ pub struct App {
     geography_countries_expanded: bool,
     experience_expanded: bool,
     section: Section,
+    narrow_viewport: bool,
 }
 
 struct SidebarPanel {
@@ -127,7 +130,7 @@ impl Render for ContentPanel {
                         .relative()
                         .size_full()
                         .min_h_0()
-                        .overflow_y_scroll()
+                        .overflow_scroll()
                         .track_scroll(&scroll_handle)
                         .child(
                             div()
@@ -145,6 +148,15 @@ impl Render for ContentPanel {
                         .right_0()
                         .w(gpui_kit::px(12.0))
                         .child(Scrollbar::vertical(&scroll_handle).mode(ScrollbarMode::Scrolling)),
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .bottom_0()
+                        .left_0()
+                        .right_0()
+                        .h(gpui_kit::px(8.0))
+                        .child(Scrollbar::horizontal(&scroll_handle).mode(ScrollbarMode::Scrolling)),
                 )
         })
     }
@@ -183,6 +195,7 @@ impl App {
             geography_countries_expanded: false,
             experience_expanded: true,
             section: Section::Overview,
+            narrow_viewport: false,
         }
     }
 
@@ -391,8 +404,17 @@ fn footer_attribution() -> AnyElement {
 }
 
 impl Render for App {
-    fn render(&mut self, _: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _ = &self.dock;
+        let narrow = window.bounds().size.width.as_f32() < NARROW_BREAKPOINT;
+        if narrow != self.narrow_viewport {
+            self.narrow_viewport = narrow;
+            let _ = self.dock.update(cx, |dock, cx| {
+                if narrow == dock.is_dock_open(DockPlacement::Left) {
+                    dock.toggle_dock(DockPlacement::Left, window, cx);
+                }
+            });
+        }
         let candidate = if self.resume.basics.name.is_empty() {
             "Resume visualizer".to_owned()
         } else {
@@ -446,6 +468,7 @@ pub fn root_view(window: &mut Window, cx: &mut gpui_kit::App) -> Entity<Root> {
                 cx,
             );
             dock.set_dock_size(DockPlacement::Left, px(240.0), window, cx);
+            dock.set_dock_collapsible(DockPlacement::Left, true, window, cx);
         });
     });
     cx.new(|cx| Root::new(view, window, cx))

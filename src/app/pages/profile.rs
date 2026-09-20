@@ -45,6 +45,7 @@ impl App {
             );
         let mut hero_panel = div()
             .w_full()
+            .min_w(gpui_kit::px(520.0))
             .p_6()
             .mb_4()
             .bg(gpui_kit::rgb(SIDEBAR_BACKGROUND))

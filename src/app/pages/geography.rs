@@ -550,6 +550,7 @@ impl App {
             div()
                 .mt_6()
                 .w_full()
+                .min_w(gpui_kit::px(layout.container_width + 2.0 * GRAPH_PADDING))
                 .flex()
                 .justify_center()
                 .p_4()
