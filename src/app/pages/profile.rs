@@ -28,7 +28,7 @@ impl App {
                 div().into_any_element()
             } else {
                 link(
-                    "email",
+                    "email".to_owned(),
                     basics.email.clone(),
                     format!("mailto:{}", basics.email),
                 )
@@ -175,7 +175,7 @@ impl App {
                         format!("{}: ", item.network),
                     ))
                     .child(link(
-                        "network-profile",
+                        format!("network-profile-{index}"),
                         item.username.clone(),
                         item.url.clone(),
                     ))

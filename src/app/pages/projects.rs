@@ -22,7 +22,7 @@ impl App {
             grid = grid.child(card(
                 div()
                     .child(link(
-                        "project-name",
+                        format!("project-link-{index}"),
                         item.name.clone(),
                         item.url.clone(),
                     ))

@@ -74,8 +74,8 @@ pub(crate) fn compact_bubble(label: impl Into<String>) -> AnyElement {
         .into_any_element()
 }
 
-pub(crate) fn link(id: &'static str, label: String, href: String) -> AnyElement {
-    Link::new(id)
+pub(crate) fn link(id: String, label: String, href: String) -> AnyElement {
+    Link::new(id.clone())
         .href(href)
         .text_color(gpui_kit::rgb(DEFAULT_LINK_BLUE))
         .child(selectable_text(format!("{id}-label"), label))

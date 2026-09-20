@@ -21,7 +21,7 @@ impl App {
                     "Articles published on the ",
                 ))
                 .child(link(
-                    "wordpress-source",
+                    "wordpress-source".to_owned(),
                     "WordPress".to_owned(),
                     profile.url.clone(),
                 ))
@@ -49,7 +49,7 @@ impl App {
             grid = grid.child(card(
                 div()
                     .child(link(
-                        "blog-title",
+                        format!("blog-link-{index}"),
                         item.name.clone(),
                         item.url.clone(),
                     ))
